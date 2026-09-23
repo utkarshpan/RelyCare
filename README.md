@@ -1,17 +1,62 @@
-# relycare
+# RelyCare
 
-A new Flutter project.
+### Offline-First Referral Continuity for Primary Healthcare
 
-## Getting Started
+> **The network may fail. The referral shouldn't.**
 
-This project is a starting point for a Flutter application.
+RelyCare is an offline-first healthcare referral continuity platform designed to help referrals move reliably from **Primary Health Centres (PHCs)** to **District Hospitals**, even when internet connectivity is unreliable.
 
-A few resources to get you started if this is your first Flutter project:
+The system focuses on a simple but critical problem:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+**A referral is not successful when a doctor clicks "Send".  
+A referral is successful when the patient continues care at the next facility.**
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
+
+## 🚨 The Problem
+
+Healthcare referrals often cross multiple facilities, but the communication layer between them can be fragile.
+
+A typical referral journey can break because of:
+
+- 📶 Unreliable or unavailable internet connectivity
+- 📄 Fragmented referral information
+- 🔄 Delayed synchronization between facilities
+- 👤 Patient identity variations between records
+- 🏥 Lack of visibility at the receiving hospital
+- 🔐 Need for secure, facility-level access control
+
+When a referral is created at a PHC but the receiving hospital does not reliably receive or identify it, **continuity of care is affected**.
+
+RelyCare is designed to address this gap.
+
+---
+
+# 💡 Our Solution
+
+RelyCare provides an **offline-first referral continuity layer** between healthcare facilities.
+
+Instead of depending entirely on an active internet connection:
+
+```text
+                    INTERNET AVAILABLE
+                           │
+                           ▼
+┌──────────────┐    ┌───────────────┐    ┌───────────────┐
+│     PHC      │───▶│  Sync Layer   │───▶│    Hospital   │
+│              │    │               │    │               │
+│ Create       │    │ Push / Pull   │    │ Receive       │
+│ Referral     │    │ Synchronize   │    │ Review        │
+└──────────────┘    └───────────────┘    └───────────────┘
+
+                    INTERNET UNAVAILABLE
+                           │
+                           ▼
+
+              ┌────────────────────────┐
+              │ Local Device Storage   │
+              │                        │
+              │ Referral persists      │
+              │ SyncQueue tracks work  │
+              │ Retry when connected   │
+              └────────────────────────┘
