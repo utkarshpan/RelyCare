@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../widgets/bottom_nav_bar.dart';
 
 /// High-Fidelity Patient Identity Matching Screen for District Hospital Staff.
 /// Displays incoming vs existing hospital records with match confidence,
@@ -15,7 +16,7 @@ class IdentityMatchingScreen extends StatefulWidget {
 }
 
 class _IdentityMatchingScreenState extends State<IdentityMatchingScreen> {
-  int _currentNavIndex = 1; // Highlight 'Incoming'
+  final int _currentNavIndex = 1; // Highlight 'Incoming'
   bool _isConfirmed = false;
 
   void _handleConfirmMatch() {
@@ -952,134 +953,33 @@ class _IdentityMatchingScreenState extends State<IdentityMatchingScreen> {
 
   /// Custom Bottom Navigation Bar matching Hospital Dashboard (Highlight 'Incoming')
   Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(index: 0, icon: Icons.home_rounded, label: 'Home'),
-              _buildNavItem(
-                index: 1,
-                icon: Icons.move_to_inbox_outlined,
-                label: 'Incoming',
-                showDot: true,
-              ),
-              _buildNavItem(
-                index: 2,
-                icon: Icons.sync_rounded,
-                label: 'Sync',
-                badgeCount: 4,
-              ),
-              _buildNavItem(
-                index: 3,
-                icon: Icons.person_outline_rounded,
-                label: 'Profile',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required int index,
-    required IconData icon,
-    required String label,
-    bool showDot = false,
-    int? badgeCount,
-  }) {
-    final isSelected = _currentNavIndex == index;
-    final activeColor = AppColors.primary;
-    final inactiveColor = const Color(0xFF64748B);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        setState(() {
-          _currentNavIndex = index;
-        });
-        if (index == 0) {
-          context.go('/hospital-dashboard');
+    return BottomNavBar(
+      currentIndex: _currentNavIndex,
+      items: const [
+        BottomNavItem(icon: Icons.home_rounded, label: 'Home'),
+        BottomNavItem(icon: Icons.move_to_inbox_outlined, label: 'Incoming'),
+        BottomNavItem(icon: Icons.sync_rounded, label: 'Sync', badgeCount: 4),
+        BottomNavItem(icon: Icons.person_outline_rounded, label: 'Profile'),
+      ],
+      activeColor: AppColors.primary,
+      inactiveColor: Color(0xFF64748B),
+      onTap: (index) {
+        if (index == _currentNavIndex) return;
+        switch (index) {
+          case 0:
+            context.go('/hospital-dashboard');
+            break;
+          case 1:
+            context.go('/identity-matching');
+            break;
+          case 2:
+            context.go('/sync-status');
+            break;
+          case 3:
+            context.go('/profile');
+            break;
         }
       },
-      child: SizedBox(
-        width: 68,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(
-                  icon,
-                  size: 24,
-                  color: isSelected ? activeColor : inactiveColor,
-                ),
-                if (badgeCount != null)
-                  Positioned(
-                    right: -8,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF2563EB),
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        '$badgeCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? activeColor : inactiveColor,
-              ),
-            ),
-            const SizedBox(height: 2),
-            if (isSelected && showDot)
-              Container(
-                width: 5,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: activeColor,
-                  shape: BoxShape.circle,
-                ),
-              )
-            else
-              const SizedBox(height: 5),
-          ],
-        ),
-      ),
     );
   }
 }

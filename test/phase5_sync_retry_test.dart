@@ -168,6 +168,7 @@ void main() {
         sourceFacility: 'PHC Kalyanpur',
         destinationFacility: 'DH Gorakhpur',
         reason: 'Eclampsia',
+        autoSync: false,
       );
       expect(created, isNotNull);
 
@@ -202,6 +203,7 @@ void main() {
         sourceFacility: 'PHC North',
         destinationFacility: 'DH Central',
         reason: 'Multiple trauma',
+        autoSync: false,
       );
 
       // 1st attempt fails
@@ -239,6 +241,7 @@ void main() {
         sourceFacility: 'PHC East',
         destinationFacility: 'DH East',
         reason: 'Cardiac emergency',
+        autoSync: false,
       );
 
       // Attempt 1
@@ -269,6 +272,7 @@ void main() {
         sourceFacility: 'PHC West',
         destinationFacility: 'DH West',
         reason: 'Diabetic ketoacidosis',
+        autoSync: false,
       );
 
       // Exhaust 3 retries
@@ -302,6 +306,7 @@ void main() {
         sourceFacility: 'PHC Remote',
         destinationFacility: 'DH Main',
         reason: 'Severe infection',
+        autoSync: false,
       );
 
       // First failed attempt while online
@@ -393,6 +398,7 @@ void main() {
         sourceFacility: 'PHC Central',
         destinationFacility: 'DH East',
         reason: 'Head injury',
+        autoSync: false,
       );
 
       // Fire sync and retry concurrently
@@ -415,6 +421,7 @@ void main() {
         sourceFacility: 'PHC 1',
         destinationFacility: 'DH 1',
         reason: 'Hypertensive crisis',
+        autoSync: false,
       );
 
       // Fail twice
@@ -446,6 +453,7 @@ void main() {
         destinationFacility: 'DH South',
         reason: 'Severe dehydration',
         clinicalNotes: 'IV fluids initiated',
+        autoSync: false,
       );
 
       await syncService.syncPendingReferrals(); // 1st failure
@@ -522,6 +530,7 @@ void main() {
         sourceFacility: 'PHC A',
         destinationFacility: 'DH A',
         reason: 'Reason A',
+        autoSync: false,
       );
 
       final refB = await referralProvider.createReferral(
@@ -531,6 +540,7 @@ void main() {
         sourceFacility: 'PHC B',
         destinationFacility: 'DH B',
         reason: 'Reason B',
+        autoSync: false,
       );
 
       // Fail ONLY referral A, allow referral B to succeed
@@ -564,6 +574,7 @@ void main() {
         sourceFacility: 'PHC Test',
         destinationFacility: 'DH Test',
         reason: 'Test Reason',
+        autoSync: false,
       );
       expect(ref!.syncState, equals(SyncState.pendingSync));
 
@@ -583,6 +594,7 @@ void main() {
         sourceFacility: 'PHC North',
         destinationFacility: 'DH Central',
         reason: 'Emergency',
+        autoSync: false,
       );
 
       // Make API throw UnauthenticatedException

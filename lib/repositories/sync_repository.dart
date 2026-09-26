@@ -34,6 +34,11 @@ class SyncRepository {
     return await syncService.retryFailedItems();
   }
 
+  /// Resets all failed queue items to PENDING with retry count reset to 0 for manual retry.
+  Future<void> resetFailedItems() async {
+    await localStorage.resetAllFailedSyncItems();
+  }
+
   /// Triggers pull-sync to fetch latest server referrals into local SQLite.
   Future<List<Referral>> pullReferrals({int skip = 0, int limit = 100, String? status}) async {
     return await syncService.pullReferralsFromServer(skip: skip, limit: limit, status: status);

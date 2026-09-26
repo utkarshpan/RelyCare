@@ -14,7 +14,7 @@ class UserModel(Base):
     email = Column(String(255), unique=True, index=True, nullable=True)
     phone = Column(String(64), nullable=True)
     password_hash = Column(String(255), nullable=False)
-    role = Column(String(64), nullable=False)  # PHC_STAFF or HOSPITAL_STAFF
+    role = Column(String(64), nullable=False)  # PHC_STAFF, HOSPITAL_STAFF, or PATIENT
     facility_id = Column(String(64), ForeignKey("facilities.facility_code"), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
 

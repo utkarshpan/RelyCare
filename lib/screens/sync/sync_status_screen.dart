@@ -29,7 +29,7 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
     final syncProvider = context.read<SyncProvider>();
     final connectivity = context.read<ConnectivityProvider>();
 
-    final count = await syncProvider.syncPending();
+    final count = await syncProvider.syncPending(resetFailed: true);
     if (mounted) {
       final String message;
       final Color backgroundColor;
