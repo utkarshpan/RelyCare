@@ -196,6 +196,7 @@ void main() {
       sourceFacility: 'PHC Palghar',
       destinationFacility: 'District Hospital',
       reason: 'Fracture',
+      recipientPhoneNumber: '+91 9988776655',
     );
     expect(created, isNotNull);
 
@@ -232,6 +233,7 @@ void main() {
       sourceFacility: 'PHC Palghar',
       destinationFacility: 'District Hospital',
       reason: 'Fever',
+      recipientPhoneNumber: '+91 9988776655',
     );
     expect(created, isNotNull);
     expect(mockSmsService.sentPayloads.length, equals(1));
@@ -276,6 +278,7 @@ void main() {
       sourceFacility: 'PHC Palghar',
       destinationFacility: 'District Hospital',
       reason: 'Severe fever',
+      recipientPhoneNumber: '+91 9988776655',
     );
     expect(created, isNotNull);
 
@@ -356,6 +359,7 @@ void main() {
       sourceFacility: 'PHC-TEST',
       destinationFacility: 'DH-TEST',
       reason: 'Abdominal pain',
+      recipientPhoneNumber: '+91 9988776655',
     );
     expect(created, isNotNull);
     expect(mockSmsService.sentPayloads.length, equals(1));
@@ -426,6 +430,7 @@ void main() {
       sourceFacility: 'PHC-TEST',
       destinationFacility: 'DH-TEST',
       reason: 'Severe migraine',
+      recipientPhoneNumber: '+91 9988776655',
     );
     expect(created, isNotNull);
 
@@ -454,5 +459,44 @@ void main() {
     expect(mockSmsService.sentPayloads.length, equals(1));
     final eventsAfter = await referralProvider.getReferralEvents(created.id);
     expect(eventsAfter.where((e) => e.eventType == 'SMS_SENT').length, equals(1));
+  });
+
+  testWidgets('9. Offline referral without recipientPhoneNumber saves locally without SMS or fake SMS_SENT event', (tester) async {
+    // Set network to OFFLINE
+    connectivityService.setOnline(false);
+
+    final created = await referralProvider.createReferral(
+      patientName: 'Vikas Dubey',
+      patientAge: 48,
+      patientGender: 'Male',
+      sourceFacility: 'PHC Palghar',
+      destinationFacility: 'District Hospital',
+      reason: 'Chronic cough',
+      recipientPhoneNumber: null, // explicitly unconfigured
+    );
+    expect(created, isNotNull);
+
+    // Referral is saved locally with PENDING syncState
+    expect(created!.syncState, equals(SyncState.pendingSync));
+
+    // No SMS was dispatched
+    expect(mockSmsService.sentPayloads.isEmpty, isTrue);
+
+    // No SMS_SENT or SMS_FAILED event recorded
+    final events = await referralProvider.getReferralEvents(created.id);
+    expect(events.any((e) => e.eventType == 'SMS_SENT'), isFalse);
+    expect(events.any((e) => e.eventType == 'SMS_FAILED'), isFalse);
+
+    // Delivery status remains notSent
+    final smsStatus = await referralProvider.getSmsDeliveryStatus(created.referralToken);
+    expect(smsStatus, equals(SmsDeliveryStatus.notSent));
+
+    // Render Referral Details Screen
+    await tester.pumpWidget(createWidgetUnderTest(created));
+    await tester.pumpAndSettle();
+
+    // Timeline Node 3 displays pending "Synced to Server", NOT "SMS Fallback Sent"
+    expect(find.text('Synced to Server'), findsOneWidget);
+    expect(find.text('SMS Fallback Sent'), findsNothing);
   });
 }

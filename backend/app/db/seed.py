@@ -21,6 +21,13 @@ def is_demo_seeding_allowed() -> bool:
 
 def seed_facilities_and_users(db: Session, force: bool = False) -> None:
     """Idempotently seed required facilities and development/demo users into PostgreSQL."""
+    # Guard demo seeding against production deployment unless explicitly allowed or forced
+    if not is_demo_seeding_allowed() and not force:
+        logger.warning(
+            "Demo seeding skipped: ENVIRONMENT is set to production and ALLOW_DEMO_SEEDING is not enabled."
+        )
+        return
+
     # 1. Seed or update required facilities
     facilities_data = [
         {
@@ -52,13 +59,6 @@ def seed_facilities_and_users(db: Session, force: bool = False) -> None:
             fac.facility_type = f_data["facility_type"]
             fac.is_active = f_data["is_active"]
     db.commit()
-
-    # Guard demo users against production deployment unless explicitly allowed or forced
-    if not is_demo_seeding_allowed() and not force:
-        logger.warning(
-            "Demo user seeding skipped: ENVIRONMENT is set to production and ALLOW_DEMO_SEEDING is not enabled."
-        )
-        return
 
     # 2. Seed standard demo users (Password: 12345678)
     demo_users_data = [

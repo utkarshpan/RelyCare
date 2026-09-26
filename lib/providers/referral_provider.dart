@@ -97,7 +97,7 @@ class ReferralProvider extends ChangeNotifier {
     ReferralUrgency urgency = ReferralUrgency.routine,
     String? customReferralId,
     String? createdByStaff,
-    String recipientPhoneNumber = '+91 9988776655',
+    String? recipientPhoneNumber,
     bool autoSync = true,
   }) async {
     // Prevent duplicate simultaneous submissions
@@ -149,7 +149,7 @@ class ReferralProvider extends ChangeNotifier {
   /// Dispatches an SMS fallback message for a locally stored referral.
   Future<SmsResult?> sendSmsFallback(
     String referralToken, {
-    String recipientPhoneNumber = '+91 9988776655',
+    String? recipientPhoneNumber,
     bool forceRetry = false,
   }) async {
     if (_isSendingSms || _isDisposed) return null;

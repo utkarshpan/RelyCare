@@ -52,7 +52,7 @@ class ReferralRepository {
     ReferralUrgency urgency = ReferralUrgency.routine,
     String? customReferralId,
     String? createdByStaff,
-    String recipientPhoneNumber = '+91 9988776655',
+    String? recipientPhoneNumber,
     bool autoSync = true,
   }) async {
     final actualSourceFacility = FacilityNormalizer.normalizeSourceFacility(sourceFacility);
@@ -100,20 +100,24 @@ class ReferralRepository {
         final syncCheck = await localStorage.getDomainReferralById(row.referralId);
         if (syncCheck != null && syncCheck.syncState != SyncState.synced) {
           AppLogger.warning(
-            'Referral ${row.referralId} remains unsynced after online sync pass (state: ${syncCheck.syncState}). Triggering SMS fallback channel.',
+            'Referral ${row.referralId} remains unsynced after online sync pass (state: ${syncCheck.syncState}). Triggering SMS fallback channel if configured.',
             'ReferralRepository',
           );
-          await sendSmsFallback(
-            domainReferral.referralToken,
-            recipientPhoneNumber: recipientPhoneNumber,
-          );
+          if (recipientPhoneNumber != null && recipientPhoneNumber.trim().isNotEmpty) {
+            await sendSmsFallback(
+              domainReferral.referralToken,
+              recipientPhoneNumber: recipientPhoneNumber.trim(),
+            );
+          }
         }
       } else {
-        // Offline mode: automatically dispatch SMS fallback
-        await sendSmsFallback(
-          domainReferral.referralToken,
-          recipientPhoneNumber: recipientPhoneNumber,
-        );
+        // Offline mode: automatically dispatch SMS fallback ONLY if recipient phone is explicitly configured
+        if (recipientPhoneNumber != null && recipientPhoneNumber.trim().isNotEmpty) {
+          await sendSmsFallback(
+            domainReferral.referralToken,
+            recipientPhoneNumber: recipientPhoneNumber.trim(),
+          );
+        }
       }
     }
 
@@ -171,6 +175,7 @@ class ReferralRepository {
   /// Sends a privacy-safe compact SMS fallback message for a locally stored referral.
   ///
   /// Rules:
+  /// - Requires an explicitly configured [recipientPhoneNumber].
   /// - Verifies local existence of referral.
   /// - Prevents duplicate successful sends unless [forceRetry] is true.
   /// - Records SMS_SENT or SMS_FAILED event in SQLite timeline.
@@ -178,9 +183,20 @@ class ReferralRepository {
   /// - Does NOT modify referral syncStatus (SMS is independent from API sync).
   Future<SmsResult> sendSmsFallback(
     String referralToken, {
-    String recipientPhoneNumber = '+91 9988776655',
+    String? recipientPhoneNumber,
     bool forceRetry = false,
   }) async {
+    if (recipientPhoneNumber == null || recipientPhoneNumber.trim().isEmpty) {
+      AppLogger.warning(
+        'SMS fallback skipped for $referralToken: No recipient phone number configured.',
+        'ReferralRepository',
+      );
+      return SmsResult.failure(
+        payload: '',
+        errorMessage: 'Recipient phone number is required for SMS fallback',
+      );
+    }
+
     final referral = await localStorage.getDomainReferralById(referralToken);
     if (referral == null) {
       return SmsResult.failure(
@@ -202,9 +218,11 @@ class ReferralRepository {
       );
     }
 
+    final normalizedPhone = recipientPhoneNumber.trim();
+
     // Dispatch SMS via service abstraction
     final result = await smsService.sendReferralSms(
-      recipientPhoneNumber: recipientPhoneNumber,
+      recipientPhoneNumber: normalizedPhone,
       referral: referral,
     );
 
@@ -215,7 +233,7 @@ class ReferralRepository {
         eventType: 'SMS_SENT',
         facility: referral.sourceFacilityId,
         performedBy: 'SMS Fallback Gateway',
-        metadata: 'SMS dispatched to $recipientPhoneNumber (ID: ${result.messageId})',
+        metadata: 'SMS dispatched to $normalizedPhone (ID: ${result.messageId})',
       );
     } else {
       await localStorage.addReferralEvent(
