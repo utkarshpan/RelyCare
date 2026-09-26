@@ -38,6 +38,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isInitializing = true;
   bool _isAuthenticated = false;
   String? _errorMessage;
+  bool _isDisposed = false;
 
   AuthProvider({
     required ApiService apiService,
@@ -45,6 +46,19 @@ class AuthProvider extends ChangeNotifier {
   })  : _apiService = apiService,
         _authStorage = authStorage {
     restoreSession();
+  }
+
+  @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
   }
 
 

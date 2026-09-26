@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../models/referral_guardian_status.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/bottom_nav_bar.dart';
 
@@ -507,6 +508,7 @@ class _PHCDashboardScreenState extends State<PHCDashboardScreen> {
     required Color statusBgColor,
     required Color statusTextColor,
     Color? accentBorderColor,
+    ReferralGuardianStatus? guardianStatus,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -540,7 +542,7 @@ class _PHCDashboardScreenState extends State<PHCDashboardScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Top Row: Patient Name + Status Badge
+                      // Top Row: Patient Name + Status Badges
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -553,21 +555,52 @@ class _PHCDashboardScreenState extends State<PHCDashboardScreen> {
                               letterSpacing: -0.2,
                             ),
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: statusBgColor,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              status,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: statusTextColor,
-                                letterSpacing: 0.3,
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (guardianStatus != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: guardianStatus.backgroundColor,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: guardianStatus.color.withValues(alpha: 0.3)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(guardianStatus.icon, size: 12, color: guardianStatus.color),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        guardianStatus.displayName,
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: guardianStatus.color,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: statusBgColor,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  status,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: statusTextColor,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ],
                       ),

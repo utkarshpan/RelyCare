@@ -3,6 +3,7 @@ import '../local_storage/local_storage_service.dart';
 import '../local_storage/app_database.dart';
 import '../api/api_service.dart';
 import '../connectivity/connectivity_service.dart';
+import '../sms/sms_service.dart';
 import '../../models/referral.dart';
 import '../../core/errors/app_exceptions.dart';
 import '../../core/constants/app_constants.dart';
@@ -15,6 +16,7 @@ class SyncService {
   final LocalStorageService localStorage;
   final ApiService apiService;
   final ConnectivityService connectivityService;
+  final SmsService? smsService;
   final int maxRetries;
 
   bool _isSyncing = false;
@@ -25,6 +27,7 @@ class SyncService {
     required this.localStorage,
     required this.apiService,
     required this.connectivityService,
+    this.smsService,
     this.maxRetries = AppConstants.maxSyncRetries,
   });
 
@@ -170,8 +173,9 @@ class SyncService {
       // Mark item as SYNCING before calling API
       await localStorage.markSyncing(queueItem.id);
 
+      Referral? referral;
       try {
-        final referral = await localStorage.getDomainReferralById(queueItem.entityId);
+        referral = await localStorage.getDomainReferralById(queueItem.entityId);
         if (referral == null) {
           AppLogger.warning(
             'Referral ${queueItem.entityId} not found locally for queue item #${queueItem.id}',
@@ -254,10 +258,75 @@ class SyncService {
         );
         // On failure: mark FAILED and increment retryCount (without deleting data or marking referral synced)
         await localStorage.markSyncFailed(queueItem.id, resetToPending: false);
+        final updatedRetryCount = queueItem.retryCount + 1;
+        if (referral != null && updatedRetryCount >= maxRetries) {
+          await _handleSmsFallback(referral);
+        }
       }
     }
 
     return syncedCount;
   }
 
+  /// Triggers SMS fallback when normal HTTP synchronization fails,
+  /// subject to duplicate delivery checks and event logging.
+  ///
+  /// Fallback Condition: Triggered after HTTP sync failure when [smsService] is available.
+  /// Privacy & Safety:
+  /// - Does NOT delete SyncQueue item or set its status to SUCCESS.
+  /// - Does NOT update local referral syncState to SYNCED.
+  /// - Prevents duplicate SMS sends by checking existing SMS_SENT events via [getSmsDeliveryStatus].
+  Future<void> _handleSmsFallback(Referral referral) async {
+    if (smsService == null) return;
+
+    try {
+      final smsStatus = await localStorage.getSmsDeliveryStatus(referral.referralToken);
+      if (smsStatus == SmsDeliveryStatus.sent) {
+        AppLogger.info(
+          'SMS fallback already sent for ${referral.referralToken}. Skipping duplicate send.',
+          'SyncService',
+        );
+        return;
+      }
+
+      final recipientPhone = referral.patient?.contactNumber ?? 'DESTINATION_HOSPITAL';
+      final result = await smsService!.sendReferralSms(
+        recipientPhoneNumber: recipientPhone,
+        referral: referral,
+      );
+
+      if (result.isSuccess) {
+        await localStorage.addReferralEvent(
+          referralId: referral.referralToken,
+          eventType: 'SMS_SENT',
+          facility: referral.sourceFacilityId,
+          performedBy: 'SMS Fallback Gateway',
+          metadata: 'SMS dispatched to $recipientPhone (ID: ${result.messageId})',
+        );
+        AppLogger.info(
+          'SMS fallback sent for referral ${referral.referralToken}',
+          'SyncService',
+        );
+      } else {
+        await localStorage.addReferralEvent(
+          referralId: referral.referralToken,
+          eventType: 'SMS_FAILED',
+          facility: referral.sourceFacilityId,
+          performedBy: 'SMS Fallback Gateway',
+          metadata: 'SMS delivery failed: ${result.errorMessage}',
+        );
+        AppLogger.warning(
+          'SMS fallback failed for referral ${referral.referralToken}: ${result.errorMessage}',
+          'SyncService',
+        );
+      }
+    } catch (fallbackErr, fallbackStack) {
+      AppLogger.error(
+        'Error during SMS fallback execution for ${referral.referralToken}',
+        fallbackErr,
+        fallbackStack,
+        'SyncService',
+      );
+    }
+  }
 }

@@ -50,14 +50,24 @@ class _CreateReferralStep2ScreenState extends State<CreateReferralStep2Screen> {
     }
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUser;
+    final userFacilityId = currentUser?.facilityId;
+
+    if (userFacilityId == null || userFacilityId.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to create referral: User facility information is missing.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     final referralProvider = Provider.of<ReferralProvider>(context, listen: false);
 
-    final currentUser = authProvider.currentUser;
-    final rawUserFacility = (currentUser != null && currentUser.facilityId.isNotEmpty)
-        ? currentUser.facilityId
-        : FacilityNormalizer.defaultPhcFacility;
-
-    final userFacility = FacilityNormalizer.normalizeSourceFacility(rawUserFacility);
+    final userFacility = FacilityNormalizer.normalizeSourceFacility(userFacilityId);
     final destinationFacility = FacilityNormalizer.normalizeDestinationFacility(
       _selectedDestination ?? FacilityNormalizer.defaultHospitalFacility,
     );

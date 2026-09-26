@@ -16,4 +16,8 @@ class AppConstants {
 
   // Sync & Retry Policy
   static const int maxSyncRetries = 3;
+
+  // Referral Guardian Prototype Operational Time Windows
+  static const Duration guardianAtRiskWindow = Duration(hours: 2);
+  static const Duration guardianActionRequiredWindow = Duration(hours: 6);
 }

@@ -158,8 +158,31 @@ class ReferralRepository {
   }
 
   /// Updates status (e.g. PATIENT_ARRIVED, UNDER_TREATMENT, COMPLETED).
-  Future<void> updateStatus(String referralId, ReferralStatus status) async {
+  Future<void> updateStatus(
+    String referralId,
+    ReferralStatus status, {
+    String? facilityId,
+    String? performedBy,
+  }) async {
     await localStorage.updateReferralStatus(referralId, status.code);
+    await localStorage.addReferralEvent(
+      referralId: referralId,
+      eventType: status.code,
+      facility: facilityId,
+      performedBy: performedBy,
+      metadata: 'Status updated to ${status.displayName}',
+    );
+
+    if (await connectivityService.checkConnectivity()) {
+      try {
+        await apiService.updateReferralStatus(referralId, status.code);
+      } catch (e) {
+        AppLogger.warning(
+          'API status update for $referralId failed (offline mode): $e',
+          'ReferralRepository',
+        );
+      }
+    }
   }
 
   /// Pulls the latest referrals from FastAPI backend into local SQLite via shared SyncService.
