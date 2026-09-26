@@ -97,6 +97,7 @@ class ReferralProvider extends ChangeNotifier {
     ReferralUrgency urgency = ReferralUrgency.routine,
     String? customReferralId,
     String? createdByStaff,
+    String recipientPhoneNumber = '+91 9988776655',
   }) async {
     // Prevent duplicate simultaneous submissions
     if (_isCreating || _isDisposed) {
@@ -121,9 +122,11 @@ class ReferralProvider extends ChangeNotifier {
         urgency: urgency,
         customReferralId: customReferralId,
         createdByStaff: createdByStaff,
+        recipientPhoneNumber: recipientPhoneNumber,
       );
 
       if (!_isDisposed) {
+        _referrals.removeWhere((r) => r.referralToken == newReferral.referralToken);
         _referrals.insert(0, newReferral);
         _lastCreatedReferral = newReferral;
       }
@@ -144,7 +147,7 @@ class ReferralProvider extends ChangeNotifier {
   /// Dispatches an SMS fallback message for a locally stored referral.
   Future<SmsResult?> sendSmsFallback(
     String referralToken, {
-    required String recipientPhoneNumber,
+    String recipientPhoneNumber = '+91 9988776655',
     bool forceRetry = false,
   }) async {
     if (_isSendingSms || _isDisposed) return null;

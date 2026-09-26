@@ -260,12 +260,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
 
-                    // Field 3: Login As (Dropdown)
-                    _buildFieldLabel('Login As'),
-                    const SizedBox(height: 8),
-                    _buildRoleDropdown(authProvider),
+                    // Role Notice: Non-interactive server-assigned role indicator
+                    _buildRoleIndicator(),
                     const SizedBox(height: 14),
 
                     // Remember Me & Forgot Password Row
@@ -544,9 +542,9 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildRoleDropdown(AuthProvider authProvider) {
+  Widget _buildRoleIndicator() {
     return Container(
-      height: 52,
+      height: 48,
       decoration: BoxDecoration(
         color: AppColors.inputBackground,
         borderRadius: BorderRadius.circular(14),
@@ -562,7 +560,7 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Server Authenticated (Role & Facility assigned by DB)',
+              'Role assigned automatically by server',
               style: GoogleFonts.inter(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,

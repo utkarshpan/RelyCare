@@ -127,5 +127,14 @@ void main() {
       final token = await mockStorage.getToken();
       assert(token == null);
     });
+
+    test('UserRole parsing correctly maps PHC_STAFF, HOSPITAL_STAFF, and PATIENT', () {
+      expect(UserRole.fromString('PHC_STAFF'), UserRole.phcStaff);
+      expect(UserRole.fromString('HOSPITAL_STAFF'), UserRole.hospitalStaff);
+      expect(UserRole.fromString('PATIENT'), UserRole.patient);
+      expect(UserRole.fromString('PHC Staff'), UserRole.phcStaff);
+      expect(UserRole.fromString('Hospital Staff'), UserRole.hospitalStaff);
+      expect(UserRole.fromString('Patient'), UserRole.patient);
+    });
   });
 }

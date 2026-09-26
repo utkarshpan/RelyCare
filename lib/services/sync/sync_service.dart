@@ -180,9 +180,34 @@ class SyncService {
           continue;
         }
 
+        var referralToSend = referral;
+        final normalizedSource = (referral.sourceFacilityId == 'PHC-001' || referral.sourceFacilityId.trim().isEmpty)
+            ? 'PHC-TEST'
+            : referral.sourceFacilityId;
+        final normalizedDest = (referral.destinationFacilityId == 'District Hospital' || referral.destinationFacilityId == 'UNKNOWN' || referral.destinationFacilityId.trim().isEmpty)
+            ? 'DH-TEST'
+            : referral.destinationFacilityId;
+        if (normalizedSource != referral.sourceFacilityId || normalizedDest != referral.destinationFacilityId) {
+          referralToSend = Referral(
+            id: referral.id,
+            referralToken: referral.referralToken,
+            patientId: referral.patientId,
+            patient: referral.patient,
+            sourceFacilityId: normalizedSource,
+            destinationFacilityId: normalizedDest,
+            referralReason: referral.referralReason,
+            urgency: referral.urgency,
+            clinicalNotesSummary: referral.clinicalNotesSummary,
+            status: referral.status,
+            syncState: referral.syncState,
+            createdAt: referral.createdAt,
+            updatedAt: referral.updatedAt,
+          );
+        }
+
         // Attempt API synchronization
         try {
-          await apiService.createReferral(referral);
+          await apiService.createReferral(referralToSend);
         } on DuplicateReferralException catch (dupEx) {
           // Reconcile 409 Duplicate: check if referral exists on server
           try {

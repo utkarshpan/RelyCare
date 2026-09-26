@@ -751,8 +751,19 @@ class _CreateReferralScreenState extends State<CreateReferralScreen> {
         setState(() {
           _currentNavIndex = index;
         });
-        if (index == 0) {
-          context.go('/phc-dashboard');
+        switch (index) {
+          case 0:
+            context.go('/phc-dashboard');
+            break;
+          case 1:
+            context.go('/referrals');
+            break;
+          case 2:
+            context.go('/sync-status');
+            break;
+          case 3:
+            context.go('/profile');
+            break;
         }
       },
       child: SizedBox(

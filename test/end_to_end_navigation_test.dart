@@ -37,15 +37,17 @@ class FakeApiService implements ApiService {
 
   @override
   Future<Map<String, dynamic>> login(String username, String password) async {
-    final isHospital = username.contains('hospital') || username.contains('verma');
+    final isHospital = username.contains('hospital') || username.contains('verma') || username == 'hosp';
+    final isPatient = username.contains('patient');
+    final role = isPatient ? 'PATIENT' : (isHospital ? 'HOSPITAL_STAFF' : 'PHC_STAFF');
     return {
       'access_token': 'test_mock_jwt_token',
       'token_type': 'bearer',
       'user': {
         'id': 1,
         'username': username,
-        'role': isHospital ? 'HOSPITAL_STAFF' : 'PHC_STAFF',
-        'facility_id': isHospital ? 'DH_TEST' : 'PHC_TEST',
+        'role': role,
+        'facility_id': isHospital ? 'DH-TEST' : 'PHC-TEST',
         'is_active': true,
       },
     };
@@ -354,6 +356,32 @@ void main() {
     // Verify Sync Queue item created
     final queueItems = await syncRepo.getPendingQueueCount();
     expect(queueItems, equals(1));
+
+    // 7. Test Local Referrals -> Referral Details for created patient
+    await tester.tap(find.text('Referrals'));
+    await tester.pumpAndSettle();
+    expect(find.text('Local Referrals'), findsOneWidget);
+    expect(find.text('Sita Devi'), findsOneWidget);
+
+    // Tap referral card for Sita Devi
+    await tester.tap(find.text('Sita Devi'));
+    await tester.pumpAndSettle();
+
+    // Verify Referral Details shows Sita Devi (NOT Rahul Sharma)
+    expect(find.text('Referral Details'), findsOneWidget);
+    expect(find.text('Sita Devi'), findsOneWidget);
+    expect(find.text('Severe abdominal pain'), findsOneWidget);
+    expect(find.text('Rahul Sharma'), findsNothing);
+
+    // Back to Local Referrals
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Local Referrals'), findsOneWidget);
+
+    // Back to PHC Dashboard
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('Good Morning, Dr. Sharma'), findsOneWidget);
   });
 
   testWidgets('TEST 3: Hospital Staff Workflow (Login, Dash, Identity Matching, Details, Logout)', (WidgetTester tester) async {
@@ -418,4 +446,117 @@ void main() {
     // Verify returned to Login Screen
     expect(find.text('Welcome Back'), findsOneWidget);
   });
+
+  testWidgets('TEST 4: Patient Login, Dashboard & Top-Left Back Button Session Exit', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(RelyCareApp(dependencies: dependencies));
+    await tester.pumpAndSettle();
+
+    // 1. Enter Patient credentials
+    expect(find.text('Welcome Back'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField).first, 'patient');
+    await tester.enterText(find.byType(TextFormField).at(1), '12345678');
+    await tester.pumpAndSettle();
+
+    final loginBtn = find.widgetWithText(ElevatedButton, 'Login');
+    await tester.tap(loginBtn);
+    await tester.pumpAndSettle();
+
+    // 2. Patient Tracking Dashboard renders
+    expect(find.text('Track Your Referral'), findsOneWidget);
+    expect(find.text('Enter your ID to see live status'), findsOneWidget);
+
+    // 3. Tap top-left back button to exit session/logout
+    final backBtn = find.byIcon(Icons.arrow_back_rounded);
+    expect(backBtn, findsOneWidget);
+    await tester.tap(backBtn);
+    await tester.pumpAndSettle();
+
+    // 4. Verify returned to Login Screen and session cleared
+    expect(find.text('Welcome Back'), findsOneWidget);
+    expect(dependencies.authProvider.isAuthenticated, false);
+  });
+
+  testWidgets('TEST 5: Hospital Dashboard Bottom Navigation Direct Tab Switching From Incoming & Details', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(RelyCareApp(dependencies: dependencies));
+    await tester.pumpAndSettle();
+
+    // 1. Enter Hospital Staff credentials
+    expect(find.text('Welcome Back'), findsOneWidget);
+    await tester.enterText(find.byType(TextFormField).first, 'hosp');
+    await tester.enterText(find.byType(TextFormField).at(1), '12345678');
+    await tester.pumpAndSettle();
+
+    final loginBtn = find.widgetWithText(ElevatedButton, 'Login');
+    await tester.tap(loginBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Good Morning, Dr. Verma'), findsOneWidget);
+
+    // 2. Navigate to Incoming / Identity Matching screen via bottom nav
+    final incomingNav = find.text('Incoming');
+    await tester.tap(incomingNav.first);
+    await tester.pumpAndSettle();
+    expect(find.text('High Confidence Match — 94%'), findsOneWidget);
+
+    // 3. Directly tap Sync in bottom navigation from Identity Matching
+    final syncNav = find.text('Sync');
+    await tester.tap(syncNav.first);
+    await tester.pumpAndSettle();
+    expect(find.text('Sync & Connectivity'), findsOneWidget);
+
+    // 4. Return to Hospital Dashboard
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('Good Morning, Dr. Verma'), findsOneWidget);
+
+    // 5. Navigate to Incoming screen again
+    await tester.tap(find.text('Incoming').first);
+    await tester.pumpAndSettle();
+    expect(find.text('High Confidence Match — 94%'), findsOneWidget);
+
+    // 6. Directly tap Profile in bottom navigation from Identity Matching
+    final profileNav = find.text('Profile');
+    await tester.tap(profileNav.first);
+    await tester.pumpAndSettle();
+    expect(find.text('Hospital Staff Profile'), findsOneWidget);
+
+    // 7. Return to Hospital Dashboard
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    expect(find.text('Good Morning, Dr. Verma'), findsOneWidget);
+
+    // 8. Directly tap Home from Identity Matching
+    await tester.tap(find.text('Incoming').first);
+    await tester.pumpAndSettle();
+    expect(find.text('High Confidence Match — 94%'), findsOneWidget);
+    await tester.tap(find.text('Home').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Good Morning, Dr. Verma'), findsOneWidget);
+
+    // 9. Navigate to Profile and Logout
+    await tester.tap(find.text('Profile').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Hospital Staff Profile'), findsOneWidget);
+
+    await tester.tap(find.text('Switch Facility / Log Out'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Welcome Back'), findsOneWidget);
+    expect(dependencies.authProvider.isAuthenticated, false);
+  });
 }
+

@@ -1,20 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/date_utils.dart';
+import '../../models/referral.dart';
+import '../../models/referral_status.dart';
+import '../../providers/referral_provider.dart';
+import '../../services/sms/sms_service.dart';
+import '../../widgets/bottom_nav_bar.dart';
 
 /// High-Fidelity Referral Details & Tracking Timeline Screen.
 /// Displays referral triage status, patient details with urgency banner,
 /// interactive vertical lifecycle timeline with GSM sync indicators, and status update actions.
 class ReferralDetailsScreen extends StatefulWidget {
-  const ReferralDetailsScreen({super.key});
+  final Referral? referral;
+
+  const ReferralDetailsScreen({super.key, this.referral});
 
   @override
   State<ReferralDetailsScreen> createState() => _ReferralDetailsScreenState();
 }
 
 class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
-  int _currentNavIndex = 1; // Highlight 'Incoming'
+  final int _currentNavIndex = 1; // Highlight 'Incoming'
 
   void _handleUpdateStatus() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -31,6 +40,8 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final referralProvider = context.watch<ReferralProvider>();
+    final activeReferral = widget.referral ?? referralProvider.selectedReferral;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -41,14 +52,14 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ================= TOP CURVED HEADER =================
-            _buildHeader(size),
+            _buildHeader(size, activeReferral),
 
             const SizedBox(height: 16),
 
             // ================= 1. CURRENT STATUS CARD =================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: _buildCurrentStatusCard(),
+              child: _buildCurrentStatusCard(activeReferral),
             ),
 
             const SizedBox(height: 14),
@@ -56,7 +67,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
             // ================= 2. PATIENT INFORMATION CARD =================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: _buildPatientInfoCard(),
+              child: _buildPatientInfoCard(activeReferral),
             ),
 
             const SizedBox(height: 14),
@@ -64,7 +75,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
             // ================= 3. REFERRAL TIMELINE CARD =================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: _buildTimelineCard(),
+              child: _buildTimelineCard(activeReferral),
             ),
 
             const SizedBox(height: 20),
@@ -111,7 +122,11 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   }
 
   /// Top Curved Blue Header with Title and Referral ID
-  Widget _buildHeader(Size size) {
+  Widget _buildHeader(Size size, Referral? referral) {
+    final referralIdText = referral != null
+        ? 'ID: ${referral.referralToken}'
+        : 'ID: RC-2026-000142';
+
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -245,7 +260,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
 
             // Subtitle: ID
             Text(
-              'ID: RC-2026-000142',
+              referralIdText,
               style: GoogleFonts.inter(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w400,
@@ -262,7 +277,46 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   }
 
   /// 1. Current Status Card with Red Left Accent Strip
-  Widget _buildCurrentStatusCard() {
+  Widget _buildCurrentStatusCard(Referral? referral) {
+    final urgencyText = referral != null
+        ? (referral.urgency == ReferralUrgency.emergency
+            ? 'Emergency'
+            : (referral.urgency == ReferralUrgency.urgent
+                ? 'High Priority'
+                : 'Routine'))
+        : 'High Priority';
+
+    final isEmergency = referral?.urgency == ReferralUrgency.emergency;
+    final isUrgent = referral?.urgency == ReferralUrgency.urgent;
+
+    final Color urgencyColor = isEmergency
+        ? const Color(0xFFDC2626)
+        : (isUrgent ? const Color(0xFFEA580C) : const Color(0xFF16A34A));
+    final Color urgencyBgColor = isEmergency
+        ? const Color(0xFFFEE2E2)
+        : (isUrgent ? const Color(0xFFFFEDD5) : const Color(0xFFDCFCE7));
+
+    final String statusText = referral?.status.code ?? 'RECEIVED';
+    final Color statusBgColor = referral?.status == ReferralStatus.received
+        ? const Color(0xFF047857)
+        : (referral?.status == ReferralStatus.completed
+            ? const Color(0xFF16A34A)
+            : (referral?.status == ReferralStatus.sent
+                ? const Color(0xFF4F46E5)
+                : const Color(0xFF2563EB)));
+
+    final String destination = referral?.destinationFacility?.name ??
+        (referral != null && referral.destinationFacilityId.isNotEmpty
+            ? referral.destinationFacilityId
+            : 'District Hospital');
+
+    final String assignedUnit = referral?.clinicalNotesSummary != null &&
+            referral!.clinicalNotesSummary!.isNotEmpty
+        ? referral.clinicalNotesSummary!
+        : (referral != null && referral.referralReason.isNotEmpty
+            ? referral.referralReason
+            : 'Emergency Triage / Cardiology');
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -281,7 +335,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
           child: Row(
             children: [
               // Red Left Accent Border Strip
-              Container(width: 5, color: const Color(0xFFDC2626)),
+              Container(width: 5, color: urgencyColor),
 
               // Content Area
               Expanded(
@@ -310,7 +364,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFEE2E2),
+                              color: urgencyBgColor,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
@@ -319,18 +373,18 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                                 Container(
                                   width: 6,
                                   height: 6,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFDC2626),
+                                  decoration: BoxDecoration(
+                                    color: urgencyColor,
                                     shape: BoxShape.circle,
                                   ),
                                 ),
                                 const SizedBox(width: 5),
                                 Text(
-                                  'High Priority',
+                                  urgencyText,
                                   style: GoogleFonts.inter(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
-                                    color: const Color(0xFFDC2626),
+                                    color: urgencyColor,
                                   ),
                                 ),
                               ],
@@ -347,7 +401,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                           vertical: 7,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF047857),
+                          color: statusBgColor,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Row(
@@ -360,7 +414,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              'RECEIVED',
+                              statusText,
                               style: GoogleFonts.inter(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
@@ -391,11 +445,11 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                                   fontSize: 13,
                                   color: const Color(0xFF475569),
                                 ),
-                                children: const [
-                                  TextSpan(text: 'Destination: '),
+                                children: [
+                                  const TextSpan(text: 'Destination: '),
                                   TextSpan(
-                                    text: 'District Hospital',
-                                    style: TextStyle(
+                                    text: destination,
+                                    style: const TextStyle(
                                       fontWeight: FontWeight.w700,
                                       color: Color(0xFF0F172A),
                                     ),
@@ -426,11 +480,11 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                                   fontSize: 13,
                                   color: const Color(0xFF475569),
                                 ),
-                                children: const [
-                                  TextSpan(text: 'Assigned Unit: '),
+                                children: [
+                                  const TextSpan(text: 'Assigned Unit: '),
                                   TextSpan(
-                                    text: 'Emergency Triage / Cardiology',
-                                    style: TextStyle(
+                                    text: assignedUnit,
+                                    style: const TextStyle(
                                       fontWeight: FontWeight.w700,
                                       color: Color(0xFF0F172A),
                                     ),
@@ -453,7 +507,19 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   }
 
   /// 2. Patient Information Card with Reason for Referral Banner
-  Widget _buildPatientInfoCard() {
+  Widget _buildPatientInfoCard(Referral? referral) {
+    final patientName = referral?.patient?.fullName ??
+        (referral != null ? 'Patient (${referral.patientId})' : 'Rahul Sharma');
+    final age = referral?.patient != null ? '${referral!.patient!.age}' : '42';
+    final gender = referral?.patient?.gender ?? 'Male';
+    final uhid = referral?.patient?.id ??
+        (referral != null ? referral.patientId : 'DH-884920');
+    final reason = referral?.referralReason ?? 'Chest pain + breathlessness';
+    final sourceFacilityName = referral?.sourceFacility?.name ??
+        (referral != null && referral.sourceFacilityId.isNotEmpty
+            ? referral.sourceFacilityId
+            : 'PHC Palghar');
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -495,7 +561,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
 
           // Patient Name
           Text(
-            'Rahul Sharma',
+            patientName,
             style: GoogleFonts.inter(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -512,27 +578,27 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                 fontSize: 13,
                 color: const Color(0xFF475569),
               ),
-              children: const [
-                TextSpan(text: 'Age: '),
+              children: [
+                const TextSpan(text: 'Age: '),
                 TextSpan(
-                  text: '42',
-                  style: TextStyle(
+                  text: age,
+                  style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF0F172A),
                   ),
                 ),
-                TextSpan(text: ' • Gender: '),
+                const TextSpan(text: ' • Gender: '),
                 TextSpan(
-                  text: 'Male',
-                  style: TextStyle(
+                  text: gender,
+                  style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF0F172A),
                   ),
                 ),
-                TextSpan(text: ' • UHID: '),
+                const TextSpan(text: ' • UHID: '),
                 TextSpan(
-                  text: 'DH-884920',
-                  style: TextStyle(
+                  text: uhid,
+                  style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF0F172A),
                   ),
@@ -572,7 +638,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Chest pain + breathlessness',
+                    reason,
                     style: GoogleFonts.inter(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
@@ -603,16 +669,16 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                       fontSize: 12.5,
                       color: const Color(0xFF64748B),
                     ),
-                    children: const [
-                      TextSpan(text: 'Referred by: '),
-                      TextSpan(
-                        text: 'Dr. A. Kulkarni',
+                    children: [
+                      const TextSpan(text: 'Referred by: '),
+                      const TextSpan(
+                        text: 'PHC Medical Officer',
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           color: Color(0xFF0F172A),
                         ),
                       ),
-                      TextSpan(text: ' (PHC Palghar)'),
+                      TextSpan(text: ' ($sourceFacilityName)'),
                     ],
                   ),
                 ),
@@ -625,135 +691,192 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   }
 
   /// 3. Referral Timeline Card with Vertical Connected Progress Dots
-  Widget _buildTimelineCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header Row: REFERRAL TIMELINE + Live GSM Sync Pill
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'REFERRAL TIMELINE',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF64748B),
-                  letterSpacing: 0.5,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'Live GSM Sync',
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF15803D),
-                  ),
-                ),
+  Widget _buildTimelineCard(Referral? referral) {
+    return FutureBuilder<SmsDeliveryStatus>(
+      future: referral != null
+          ? context.read<ReferralProvider>().getSmsDeliveryStatus(referral.referralToken)
+          : Future.value(SmsDeliveryStatus.notSent),
+      builder: (context, snapshot) {
+        final smsStatus = snapshot.data ?? SmsDeliveryStatus.notSent;
+        final wasSmsSent = smsStatus == SmsDeliveryStatus.sent;
+
+        final isCreatedDone = true;
+        final isOfflineDone = true;
+
+        final isSyncedToServer = referral != null
+            ? (referral.syncState == SyncState.synced ||
+                referral.status.index >= ReferralStatus.received.index)
+            : true;
+
+        final bool isNode3Done = wasSmsSent || isSyncedToServer;
+        final String node3Title = wasSmsSent ? 'SMS Fallback Sent' : 'Synced to Server';
+        final String node3Subtitle = wasSmsSent
+            ? 'Encrypted data packet dispatched via GSM'
+            : (isSyncedToServer
+                ? 'Payload uploaded to central registry'
+                : 'Waiting for network connection to sync');
+
+        final isReceivedDone = referral != null
+            ? referral.status.index >= ReferralStatus.received.index
+            : true;
+        final isArrivedDone = referral != null
+            ? referral.status.index >= ReferralStatus.patientArrived.index
+            : false;
+        final isTreatmentDone = referral != null
+            ? referral.status.index >= ReferralStatus.underTreatment.index
+            : false;
+        final isCompletedDone =
+            referral != null ? referral.status == ReferralStatus.completed : false;
+
+        final createdTime = referral != null
+            ? AppDateUtils.formatDateTime(referral.createdAt)
+            : '10:30 AM';
+        final facilityInitiated = referral != null
+            ? (referral.sourceFacility?.name ?? referral.sourceFacilityId)
+            : 'PHC Palghar';
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header Row: REFERRAL TIMELINE + Live GSM Sync Pill
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'REFERRAL TIMELINE',
+                    style: GoogleFonts.inter(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF64748B),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Live GSM Sync',
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF15803D),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
 
-          const SizedBox(height: 18),
+              const SizedBox(height: 18),
 
-          // Timeline Node 1: Created
-          _buildTimelineNode(
-            title: 'Created',
-            time: '10:30 AM',
-            subtitle: 'Referral initiated by PHC Palghar',
-            isCompleted: true,
-            isLatest: false,
-            lineColor: const Color(0xFF10B981),
-            showBottomLine: true,
+              // Timeline Node 1: Created
+              _buildTimelineNode(
+                title: 'Created',
+                time: createdTime,
+                subtitle: 'Referral initiated by $facilityInitiated',
+                isCompleted: isCreatedDone,
+                isLatest: false,
+                lineColor: const Color(0xFF10B981),
+                showBottomLine: true,
+              ),
+
+              // Timeline Node 2: Saved Offline
+              _buildTimelineNode(
+                title: 'Saved Offline',
+                time: createdTime,
+                subtitle: 'Cached in local SQLite store',
+                isCompleted: isOfflineDone,
+                isLatest: isOfflineDone && !isNode3Done,
+                lineColor: isNode3Done
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFE2E8F0),
+                showBottomLine: true,
+              ),
+
+              // Timeline Node 3: Synced to Server or SMS Fallback Sent
+              _buildTimelineNode(
+                title: node3Title,
+                time: isNode3Done ? createdTime : null,
+                pendingText: isNode3Done ? null : '(Pending)',
+                subtitle: node3Subtitle,
+                isCompleted: isNode3Done,
+                isLatest: isNode3Done && !isReceivedDone,
+                lineColor: isReceivedDone
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFE2E8F0),
+                showBottomLine: true,
+              ),
+
+              // Timeline Node 4: Hospital Received
+              _buildTimelineNode(
+                title: 'Hospital Received',
+                time: isReceivedDone ? 'Triage Confirmed' : null,
+                pendingText: isReceivedDone ? null : '(Pending)',
+                subtitle: 'District Hospital triage workstation confirmed',
+                isCompleted: isReceivedDone,
+                isLatest: isReceivedDone && !isArrivedDone,
+                lineColor: isArrivedDone
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFE2E8F0),
+                showBottomLine: true,
+              ),
+
+              // Timeline Node 5: Patient Arrived
+              _buildTimelineNode(
+                title: 'Patient Arrived',
+                pendingText: isArrivedDone ? null : '(Pending)',
+                subtitle: 'Awaiting physical arrival at check-in',
+                isCompleted: isArrivedDone,
+                isLatest: isArrivedDone && !isTreatmentDone,
+                lineColor: isTreatmentDone
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFE2E8F0),
+                showBottomLine: true,
+              ),
+
+              // Timeline Node 6: Under Treatment
+              _buildTimelineNode(
+                title: 'Under Treatment',
+                pendingText: isTreatmentDone ? null : '(Pending)',
+                subtitle: 'Assigned to medical specialist',
+                isCompleted: isTreatmentDone,
+                isLatest: isTreatmentDone && !isCompletedDone,
+                lineColor: isCompletedDone
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFE2E8F0),
+                showBottomLine: true,
+              ),
+
+              // Timeline Node 7: Completed
+              _buildTimelineNode(
+                title: 'Completed',
+                pendingText: isCompletedDone ? null : '(Pending)',
+                subtitle: 'Outcome report and PHC counter-referral',
+                isCompleted: isCompletedDone,
+                isLatest: isCompletedDone,
+                lineColor: Colors.transparent,
+                showBottomLine: false,
+              ),
+            ],
           ),
-
-          // Timeline Node 2: Saved Offline
-          _buildTimelineNode(
-            title: 'Saved Offline',
-            time: '10:31 AM',
-            subtitle: 'Cached in local SQLite store',
-            isCompleted: true,
-            isLatest: false,
-            lineColor: const Color(0xFF10B981),
-            showBottomLine: true,
-          ),
-
-          // Timeline Node 3: SMS Fallback Sent
-          _buildTimelineNode(
-            title: 'SMS Fallback Sent',
-            time: '10:45 AM',
-            subtitle: 'Encrypted data packet dispatched via GSM',
-            isCompleted: true,
-            isLatest: false,
-            lineColor: const Color(0xFF10B981),
-            showBottomLine: true,
-          ),
-
-          // Timeline Node 4: Hospital Received (LATEST)
-          _buildTimelineNode(
-            title: 'Hospital Received',
-            time: '11:10 AM',
-            subtitle: 'District Hospital triage workstation confirmed',
-            isCompleted: true,
-            isLatest: true,
-            lineColor: const Color(0xFFE2E8F0),
-            showBottomLine: true,
-          ),
-
-          // Timeline Node 5: Patient Arrived (Pending)
-          _buildTimelineNode(
-            title: 'Patient Arrived',
-            pendingText: '(Pending)',
-            subtitle: 'Awaiting physical arrival at check-in',
-            isCompleted: false,
-            isLatest: false,
-            lineColor: const Color(0xFFE2E8F0),
-            showBottomLine: true,
-          ),
-
-          // Timeline Node 6: Under Treatment (Pending)
-          _buildTimelineNode(
-            title: 'Under Treatment',
-            pendingText: '(Pending)',
-            subtitle: 'Assigned to medical specialist',
-            isCompleted: false,
-            isLatest: false,
-            lineColor: const Color(0xFFE2E8F0),
-            showBottomLine: true,
-          ),
-
-          // Timeline Node 7: Completed (Pending)
-          _buildTimelineNode(
-            title: 'Completed',
-            pendingText: '(Pending)',
-            subtitle: 'Outcome report and PHC counter-referral',
-            isCompleted: false,
-            isLatest: false,
-            lineColor: Colors.transparent,
-            showBottomLine: false,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -927,134 +1050,33 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
 
   /// Custom Bottom Navigation Bar matching Hospital Dashboard (Highlight 'Incoming')
   Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 12,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(index: 0, icon: Icons.home_rounded, label: 'Home'),
-              _buildNavItem(
-                index: 1,
-                icon: Icons.move_to_inbox_outlined,
-                label: 'Incoming',
-                showDot: true,
-              ),
-              _buildNavItem(
-                index: 2,
-                icon: Icons.sync_rounded,
-                label: 'Sync',
-                badgeCount: 4,
-              ),
-              _buildNavItem(
-                index: 3,
-                icon: Icons.person_outline_rounded,
-                label: 'Profile',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem({
-    required int index,
-    required IconData icon,
-    required String label,
-    bool showDot = false,
-    int? badgeCount,
-  }) {
-    final isSelected = _currentNavIndex == index;
-    final activeColor = AppColors.primary;
-    final inactiveColor = const Color(0xFF64748B);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        setState(() {
-          _currentNavIndex = index;
-        });
-        if (index == 0) {
-          context.go('/hospital-dashboard');
+    return BottomNavBar(
+      currentIndex: _currentNavIndex,
+      items: const [
+        BottomNavItem(icon: Icons.home_rounded, label: 'Home'),
+        BottomNavItem(icon: Icons.move_to_inbox_outlined, label: 'Incoming'),
+        BottomNavItem(icon: Icons.sync_rounded, label: 'Sync', badgeCount: 4),
+        BottomNavItem(icon: Icons.person_outline_rounded, label: 'Profile'),
+      ],
+      activeColor: AppColors.primary,
+      inactiveColor: Color(0xFF64748B),
+      onTap: (index) {
+        if (index == _currentNavIndex) return;
+        switch (index) {
+          case 0:
+            context.go('/hospital-dashboard');
+            break;
+          case 1:
+            context.go('/identity-matching');
+            break;
+          case 2:
+            context.go('/sync-status');
+            break;
+          case 3:
+            context.go('/profile');
+            break;
         }
       },
-      child: SizedBox(
-        width: 68,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(
-                  icon,
-                  size: 24,
-                  color: isSelected ? activeColor : inactiveColor,
-                ),
-                if (badgeCount != null)
-                  Positioned(
-                    right: -8,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF2563EB),
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        '$badgeCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? activeColor : inactiveColor,
-              ),
-            ),
-            const SizedBox(height: 2),
-            if (isSelected && showDot)
-              Container(
-                width: 5,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: activeColor,
-                  shape: BoxShape.circle,
-                ),
-              )
-            else
-              const SizedBox(height: 5),
-          ],
-        ),
-      ),
     );
   }
 }
