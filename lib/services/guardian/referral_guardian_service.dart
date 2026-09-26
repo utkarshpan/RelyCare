@@ -40,8 +40,24 @@ class ReferralGuardianService {
       );
     }
 
-    final hasSmsFailed = events?.any((e) => e.eventType == 'SMS_FAILED') ?? false;
-    final hasSmsSent = events?.any((e) => e.eventType == 'SMS_SENT') ?? false;
+    // Determine latest SMS event state if any SMS events exist
+    bool hasSmsFailed = false;
+    bool hasSmsSent = false;
+    if (events != null && events.isNotEmpty) {
+      final smsEvents = events.where((e) =>
+          e.eventType == 'SMS_FAILED' ||
+          e.eventType == 'SMS_SENT' ||
+          e.eventType == 'MOCK_SMS_SENT').toList();
+      if (smsEvents.isNotEmpty) {
+        final latestSmsEvent = smsEvents.first; // events are ordered by timestamp/creation
+        if (latestSmsEvent.eventType == 'SMS_FAILED') {
+          hasSmsFailed = true;
+        } else if (latestSmsEvent.eventType == 'SMS_SENT' || latestSmsEvent.eventType == 'MOCK_SMS_SENT') {
+          hasSmsSent = true;
+        }
+      }
+    }
+
     final isSyncFailedMax = syncQueueData != null &&
         syncQueueData.status == 'FAILED' &&
         syncQueueData.retryCount >= maxSyncRetries;
@@ -72,7 +88,8 @@ class ReferralGuardianService {
 
     // 3. Check AT_RISK conditions
     if (syncQueueData != null &&
-        (syncQueueData.retryCount == 1 || syncQueueData.retryCount == 2)) {
+        syncQueueData.retryCount > 0 &&
+        !isSyncFailedMax) {
       return ReferralGuardianEvaluation(
         status: ReferralGuardianStatus.atRisk,
         operationalSummary: 'Referral awaiting hospital acknowledgement: Sync retry attempt ${syncQueueData.retryCount} in progress.',

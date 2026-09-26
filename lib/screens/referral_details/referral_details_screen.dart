@@ -194,37 +194,35 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () async {
-                        Navigator.pop(bottomSheetContext);
                         final auth = Provider.of<AuthProvider>(context, listen: false);
+                        final refProv = Provider.of<ReferralProvider>(context, listen: false);
+                        final messenger = ScaffoldMessenger.of(context);
                         final facility = auth.currentUser?.facilityId ?? referral.destinationFacilityId;
                         final staff = auth.currentUser?.username ?? 'Hospital Staff';
+                        Navigator.pop(bottomSheetContext);
+
                         try {
-                          await Provider.of<ReferralProvider>(context, listen: false)
-                              .updateReferralStatus(
+                          await refProv.updateReferralStatus(
                             referral.referralToken,
                             nextStatus,
                             facilityId: facility,
                             performedBy: staff,
                           );
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Referral status updated to ${nextStatus.displayName}'),
-                                backgroundColor: const Color(0xFF10B981),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          }
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('Referral status updated to ${nextStatus.displayName}'),
+                              backgroundColor: const Color(0xFF10B981),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
                         } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to update status: $e'),
-                                backgroundColor: const Color(0xFFDC2626),
-                                duration: const Duration(seconds: 3),
-                              ),
-                            );
-                          }
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to update status: $e'),
+                              backgroundColor: const Color(0xFFDC2626),
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
                         }
                       },
                       style: ElevatedButton.styleFrom(
@@ -258,9 +256,20 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
     final referralProvider = context.watch<ReferralProvider>();
     final args = ModalRoute.of(context)?.settings.arguments;
     final navReferral = args is Referral ? args : null;
-    final activeReferral = widget.referral ??
-        navReferral ??
-        referralProvider.selectedReferral ??
+
+    final seedReferral = widget.referral ?? navReferral ?? referralProvider.selectedReferral;
+
+    Referral? latestFromProvider;
+    if (seedReferral != null) {
+      try {
+        latestFromProvider = referralProvider.referrals.firstWhere(
+          (r) => r.referralToken == seedReferral.referralToken,
+        );
+      } catch (_) {}
+    }
+
+    final activeReferral = latestFromProvider ??
+        seedReferral ??
         Referral(
           id: '1',
           referralToken: 'RC-2026-000142',
@@ -274,6 +283,13 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         );
+
+    final effectiveEvaluation = (widget.guardianStatus != ReferralGuardianStatus.normal)
+        ? ReferralGuardianEvaluation(
+            status: widget.guardianStatus,
+            operationalSummary: widget.guardianExplanation ?? widget.guardianStatus.operationalDescription,
+          )
+        : referralProvider.evaluateGuardianStatus(referral: activeReferral);
 
     _ensureSmsStatusCached(activeReferral.referralToken, referralProvider);
 
@@ -296,7 +312,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
             // ================= 1. CURRENT STATUS CARD =================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: _buildCurrentStatusCard(activeReferral),
+              child: _buildCurrentStatusCard(activeReferral, effectiveEvaluation),
             ),
 
             const SizedBox(height: 14),
@@ -518,7 +534,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   }
 
   /// 1. Current Status Card with Red Left Accent Strip
-  Widget _buildCurrentStatusCard(Referral? referral) {
+  Widget _buildCurrentStatusCard(Referral? referral, ReferralGuardianEvaluation evaluation) {
     final urgencyText = referral != null
         ? (referral.urgency == ReferralUrgency.emergency
             ? 'Emergency'
@@ -675,16 +691,16 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: widget.guardianStatus.backgroundColor,
+                          color: evaluation.status.backgroundColor,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: widget.guardianStatus.color.withValues(alpha: 0.3),
+                            color: evaluation.status.color.withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(
                           children: [
                             Text(
-                              widget.guardianStatus.emoji,
+                              evaluation.status.emoji,
                               style: const TextStyle(fontSize: 14),
                             ),
                             const SizedBox(width: 8),
@@ -693,16 +709,15 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Guardian: ${widget.guardianStatus.label}',
+                                    'Guardian: ${evaluation.status.label}',
                                     style: GoogleFonts.inter(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
-                                      color: widget.guardianStatus.color,
+                                      color: evaluation.status.color,
                                     ),
                                   ),
                                   Text(
-                                    widget.guardianExplanation ??
-                                        widget.guardianStatus.operationalDescription,
+                                    evaluation.operationalSummary,
                                     style: GoogleFonts.inter(
                                       fontSize: 11,
                                       color: const Color(0xFF475569),

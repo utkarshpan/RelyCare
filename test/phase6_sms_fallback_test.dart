@@ -85,7 +85,7 @@ void main() {
     setUp(() {
       db = AppDatabase(NativeDatabase.memory());
       localStorage = LocalStorageServiceImpl(db);
-      mockSmsService = MockSmsService();
+      mockSmsService = MockSmsService(isRealService: true);
       referralRepository = ReferralRepository(
         localStorage: localStorage,
         apiService: FakeApiStub(),
@@ -572,6 +572,39 @@ void main() {
       expect(events.any((e) => e.eventType == 'SMS_FAILED'), isFalse);
       expect(await referralProvider.getSmsDeliveryStatus(referral.referralToken),
           equals(SmsDeliveryStatus.notSent));
+    });
+
+    test('Test O: Unconfigured MockSmsService (isRealService == false) records MOCK_SMS_SENT and does NOT produce a false production SMS_SENT event', () async {
+      final mockSender = MockSmsService(isRealService: false);
+      final syncSvc = SyncService(
+        localStorage: localStorage,
+        apiService: FailingApiStub(),
+        connectivityService: ConnectivityServiceImpl(),
+        smsService: mockSender,
+        maxRetries: 1,
+      );
+      final repo = ReferralRepository(
+        localStorage: localStorage,
+        apiService: FailingApiStub(),
+        connectivityService: ConnectivityServiceImpl(),
+        smsService: mockSender,
+        syncService: syncSvc,
+      );
+
+      final referral = await repo.createReferralOffline(
+        patientName: 'Mock Verification',
+        patientAge: 30,
+        patientGender: 'Female',
+        sourceFacility: 'PHC Test',
+        destinationFacility: 'DH Test',
+        reason: 'Test Mock SMS',
+        recipientPhoneNumber: '+91 9988776655',
+        autoSync: true,
+      );
+
+      final events = await repo.getReferralEvents(referral.id);
+      expect(events.any((e) => e.eventType == 'MOCK_SMS_SENT'), isTrue);
+      expect(events.any((e) => e.eventType == 'SMS_SENT'), isFalse);
     });
   });
 }

@@ -173,6 +173,27 @@ class SyncService {
       // Mark item as SYNCING before calling API
       await localStorage.markSyncing(queueItem.id);
 
+      if (queueItem.operation == 'STATUS_UPDATE') {
+        try {
+          await apiService.updateReferralStatus(queueItem.entityId, queueItem.payload);
+          await localStorage.markSyncSuccess(queueItem.id);
+          syncedCount++;
+          AppLogger.info(
+            'Successfully synced STATUS_UPDATE (${queueItem.payload}) for referral ${queueItem.entityId} (Queue #${queueItem.id})',
+            'SyncService',
+          );
+        } catch (e, stack) {
+          AppLogger.error(
+            'Failed to sync STATUS_UPDATE for queue item #${queueItem.id}: $e',
+            e,
+            stack,
+            'SyncService',
+          );
+          await localStorage.markSyncFailed(queueItem.id, resetToPending: false);
+        }
+        continue;
+      }
+
       Referral? referral;
       try {
         referral = await localStorage.getDomainReferralById(queueItem.entityId);
@@ -276,7 +297,7 @@ class SyncService {
   /// - Does NOT delete SyncQueue item or set its status to SUCCESS.
   /// - Does NOT update local referral syncState to SYNCED.
   /// - Prevents duplicate SMS sends by checking existing SMS_SENT events via [getSmsDeliveryStatus].
-  Future<void> _handleSmsFallback(Referral referral) async {
+  Future<void> _handleSmsFallback(Referral referral, {String? recipientPhoneNumber}) async {
     if (smsService == null) return;
 
     try {
@@ -289,22 +310,43 @@ class SyncService {
         return;
       }
 
-      final recipientPhone = referral.patient?.contactNumber ?? 'DESTINATION_HOSPITAL';
+      final recipientPhone = (recipientPhoneNumber != null && recipientPhoneNumber.trim().isNotEmpty)
+          ? recipientPhoneNumber.trim()
+          : (referral.destinationFacility?.contactPhone != null && referral.destinationFacility!.contactPhone!.trim().isNotEmpty)
+              ? referral.destinationFacility!.contactPhone!.trim()
+              : null;
+
+      if (recipientPhone == null) {
+        AppLogger.warning(
+          'SMS fallback skipped for ${referral.referralToken}: No valid destination facility contact phone configured.',
+          'SyncService',
+        );
+        await localStorage.addReferralEvent(
+          referralId: referral.referralToken,
+          eventType: 'SMS_FAILED',
+          facility: referral.sourceFacilityId,
+          performedBy: 'SMS Fallback Gateway',
+          metadata: 'SMS fallback skipped: No valid destination facility contact phone configured.',
+        );
+        return;
+      }
+
       final result = await smsService!.sendReferralSms(
         recipientPhoneNumber: recipientPhone,
         referral: referral,
       );
 
+      final eventType = (smsService!.isRealService) ? 'SMS_SENT' : 'MOCK_SMS_SENT';
       if (result.isSuccess) {
         await localStorage.addReferralEvent(
           referralId: referral.referralToken,
-          eventType: 'SMS_SENT',
+          eventType: eventType,
           facility: referral.sourceFacilityId,
           performedBy: 'SMS Fallback Gateway',
           metadata: 'SMS dispatched to $recipientPhone (ID: ${result.messageId})',
         );
         AppLogger.info(
-          'SMS fallback sent for referral ${referral.referralToken}',
+          'SMS fallback ($eventType) sent for referral ${referral.referralToken}',
           'SyncService',
         );
       } else {

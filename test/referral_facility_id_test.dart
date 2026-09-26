@@ -156,13 +156,13 @@ void main() {
     await db.close();
   });
 
-  testWidgets('Newly created referral uses authenticated user facilityId (PHC-TEST) and NOT PHC-001', (WidgetTester tester) async {
+  testWidgets('Newly created referral uses authenticated user facilityId (PHC-ALPHA-999) and NOT PHC-001 or default fallback', (WidgetTester tester) async {
     final apiService = MockApiService(
       mockUser: const UserModel(
         id: 1,
         username: 'phc_user',
         role: 'PHC_STAFF',
-        facilityId: 'PHC-TEST',
+        facilityId: 'PHC-ALPHA-999',
         isActive: true,
       ),
     );
@@ -248,10 +248,11 @@ void main() {
     await tester.tap(find.widgetWithText(ElevatedButton, 'Next'), warnIfMissed: false);
     await tester.pumpAndSettle();
 
-    // Verify stored referral uses PHC-TEST and NOT PHC-001
+    // Verify stored referral uses PHC-ALPHA-999 and NOT PHC-001 or default PHC-TEST
     final localReferrals = await storage.getAllReferrals();
     expect(localReferrals.length, equals(1));
-    expect(localReferrals.first.sourceFacility, equals('PHC-TEST'));
+    expect(localReferrals.first.sourceFacility, equals('PHC-ALPHA-999'));
     expect(localReferrals.first.sourceFacility, isNot(equals('PHC-001')));
+    expect(localReferrals.first.sourceFacility, isNot(equals('PHC-TEST')));
   });
 }

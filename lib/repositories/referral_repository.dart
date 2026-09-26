@@ -173,6 +173,22 @@ class ReferralRepository {
       metadata: 'Status updated to ${status.displayName}',
     );
 
+    Future<void> queueStatusUpdate() async {
+      final pending = await localStorage.getPendingSyncItems();
+      final alreadyQueued = pending.any((item) =>
+          item.entityId == referralId &&
+          item.operation == 'STATUS_UPDATE' &&
+          item.payload == status.code);
+      if (!alreadyQueued) {
+        await localStorage.queueForSync(
+          entityType: 'REFERRAL',
+          entityId: referralId,
+          operation: 'STATUS_UPDATE',
+          payload: status.code,
+        );
+      }
+    }
+
     if (await connectivityService.checkConnectivity()) {
       try {
         await apiService.updateReferralStatus(referralId, status.code);
@@ -181,7 +197,10 @@ class ReferralRepository {
           'API status update for $referralId failed (offline mode): $e',
           'ReferralRepository',
         );
+        await queueStatusUpdate();
       }
+    } else {
+      await queueStatusUpdate();
     }
   }
 
@@ -251,9 +270,10 @@ class ReferralRepository {
 
     // Record delivery event locally in SQLite
     if (result.isSuccess) {
+      final eventType = smsService.isRealService ? 'SMS_SENT' : 'MOCK_SMS_SENT';
       await localStorage.addReferralEvent(
         referralId: referral.referralToken,
-        eventType: 'SMS_SENT',
+        eventType: eventType,
         facility: referral.sourceFacilityId,
         performedBy: 'SMS Fallback Gateway',
         metadata: 'SMS dispatched to $normalizedPhone (ID: ${result.messageId})',
