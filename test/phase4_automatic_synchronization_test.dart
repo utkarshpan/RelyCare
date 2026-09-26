@@ -162,6 +162,7 @@ void main() {
         sourceFacility: 'PHC Rampur',
         destinationFacility: 'District Hospital East',
         reason: 'Postpartum hemorrhage',
+        autoSync: false,
       );
       expect(createdReferral, isNotNull);
 
@@ -203,6 +204,7 @@ void main() {
         sourceFacility: 'PHC A',
         destinationFacility: 'DH A',
         reason: 'Reason 1',
+        autoSync: false,
       );
       final ref2 = await referralProvider.createReferral(
         patientName: 'Patient 2',
@@ -211,6 +213,7 @@ void main() {
         sourceFacility: 'PHC B',
         destinationFacility: 'DH B',
         reason: 'Reason 2',
+        autoSync: false,
       );
       final ref3 = await referralProvider.createReferral(
         patientName: 'Patient 3',
@@ -219,6 +222,7 @@ void main() {
         sourceFacility: 'PHC C',
         destinationFacility: 'DH C',
         reason: 'Reason 3',
+        autoSync: false,
       );
 
       final initialPending = await localStorage.getPendingSyncItems();
@@ -284,6 +288,7 @@ void main() {
         sourceFacility: 'PHC Alpha',
         destinationFacility: 'DH Beta',
         reason: 'Fracture',
+        autoSync: false,
       );
 
       // Fire two sync calls at the same time
@@ -309,6 +314,7 @@ void main() {
         sourceFacility: 'PHC West',
         destinationFacility: 'DH West',
         reason: 'Stroke evaluation',
+        autoSync: false,
       );
 
       final syncedCount = await syncService.syncPendingReferrals();
@@ -372,6 +378,7 @@ void main() {
         sourceFacility: 'PHC Delta',
         destinationFacility: 'DH Delta',
         reason: 'Chest pain',
+        autoSync: false,
       );
 
       expect(fakeApi.createdReferrals.isEmpty, isTrue);
@@ -403,6 +410,7 @@ void main() {
         sourceFacility: 'PHC South',
         destinationFacility: 'DH South',
         reason: 'Acute appendicitis',
+        autoSync: false,
       );
 
       await syncService.syncPendingReferrals();

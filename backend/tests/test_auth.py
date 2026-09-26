@@ -138,3 +138,36 @@ def test_get_me_invalid_token(client: TestClient):
         headers={"Authorization": "Bearer invalid.token.value"},
     )
     assert response.status_code == 401
+
+
+def test_demo_users_seed_and_auth(client: TestClient, db_session: Session):
+    from app.db.seed import seed_facilities_and_users
+    
+    # Run seed twice to verify idempotency
+    seed_facilities_and_users(db_session)
+    seed_facilities_and_users(db_session)
+
+    # 1. Test PHC demo user
+    resp_phc = client.post("/api/v1/auth/login", json={"username": "phc", "password": "12345678"})
+    assert resp_phc.status_code == 200
+    phc_data = resp_phc.json()
+    assert phc_data["user"]["username"] == "phc"
+    assert phc_data["user"]["role"] == "PHC_STAFF"
+    assert phc_data["user"]["facility_id"] == "PHC-TEST"
+
+    # 2. Test Hospital demo user
+    resp_hosp = client.post("/api/v1/auth/login", json={"username": "hosp", "password": "12345678"})
+    assert resp_hosp.status_code == 200
+    hosp_data = resp_hosp.json()
+    assert hosp_data["user"]["username"] == "hosp"
+    assert hosp_data["user"]["role"] == "HOSPITAL_STAFF"
+    assert hosp_data["user"]["facility_id"] == "DH-TEST"
+
+    # 3. Test Patient demo user
+    resp_patient = client.post("/api/v1/auth/login", json={"username": "patient", "password": "12345678"})
+    assert resp_patient.status_code == 200
+    patient_data = resp_patient.json()
+    assert patient_data["user"]["username"] == "patient"
+    assert patient_data["user"]["role"] == "PATIENT"
+    assert patient_data["user"]["facility_id"] == "PHC-TEST"
+

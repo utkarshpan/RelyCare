@@ -1,9 +1,12 @@
 /// API Endpoints and Network Configuration for FastAPI backend integration.
 class ApiConstants {
-  // Base URLs (Development & Local Mock)
-  // TODO: Update with your actual FastAPI server IP/domain when hosting backend
-  static const String defaultBaseUrl = 'http://10.0.2.2:8000/api/v1'; // For Android emulator
+  // Base URLs (Development & Configurable via --dart-define=API_BASE_URL=...)
+  static const String defaultBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8000/api/v1',
+  );
   static const String localhostBaseUrl = 'http://localhost:8000/api/v1';
+  static const String emulatorBaseUrl = 'http://10.0.2.2:8000/api/v1';
 
   // Referral Endpoints
   static const String referrals = '/referrals';

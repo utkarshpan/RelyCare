@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/facility_normalizer.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/referral_provider.dart';
 import '../../models/referral.dart';
 import '../../models/patient.dart';
@@ -47,7 +49,18 @@ class _CreateReferralStep2ScreenState extends State<CreateReferralStep2Screen> {
       return;
     }
 
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final referralProvider = Provider.of<ReferralProvider>(context, listen: false);
+
+    final currentUser = authProvider.currentUser;
+    final rawUserFacility = (currentUser != null && currentUser.facilityId.isNotEmpty)
+        ? currentUser.facilityId
+        : FacilityNormalizer.defaultPhcFacility;
+
+    final userFacility = FacilityNormalizer.normalizeSourceFacility(rawUserFacility);
+    final destinationFacility = FacilityNormalizer.normalizeDestinationFacility(
+      _selectedDestination ?? FacilityNormalizer.defaultHospitalFacility,
+    );
 
     // Create Patient and Referral model instances
     final patient = Patient(
@@ -69,8 +82,8 @@ class _CreateReferralStep2ScreenState extends State<CreateReferralStep2Screen> {
       referralToken: 'RC-${DateTime.now().year}-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
       patientId: patient.id,
       patient: patient,
-      sourceFacilityId: 'PHC-001', // Mock source
-      destinationFacilityId: _selectedDestination ?? 'UNKNOWN',
+      sourceFacilityId: userFacility,
+      destinationFacilityId: destinationFacility,
       referralReason: _reasonController.text.trim(),
       clinicalNotesSummary: _clinicalNotesController.text.trim(),
       urgency: urgency,
@@ -95,7 +108,6 @@ class _CreateReferralStep2ScreenState extends State<CreateReferralStep2Screen> {
     );
 
     if (createdReferral != null && mounted) {
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Referral saved locally. It will sync when online.'),

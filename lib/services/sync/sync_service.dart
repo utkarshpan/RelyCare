@@ -6,6 +6,7 @@ import '../connectivity/connectivity_service.dart';
 import '../../models/referral.dart';
 import '../../core/errors/app_exceptions.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/facility_normalizer.dart';
 import '../../core/utils/logger.dart';
 
 /// Orchestration service responsible for processing the offline sync queue,
@@ -180,9 +181,34 @@ class SyncService {
           continue;
         }
 
+        var referralToSend = referral;
+        final normalizedSource = FacilityNormalizer.normalizeSourceFacility(
+          referral.sourceFacilityId.trim().isEmpty ? FacilityNormalizer.defaultPhcFacility : referral.sourceFacilityId,
+        );
+        final normalizedDest = FacilityNormalizer.normalizeDestinationFacility(
+          referral.destinationFacilityId.trim().isEmpty ? FacilityNormalizer.defaultHospitalFacility : referral.destinationFacilityId,
+        );
+        if (normalizedSource != referral.sourceFacilityId || normalizedDest != referral.destinationFacilityId) {
+          referralToSend = Referral(
+            id: referral.id,
+            referralToken: referral.referralToken,
+            patientId: referral.patientId,
+            patient: referral.patient,
+            sourceFacilityId: normalizedSource,
+            destinationFacilityId: normalizedDest,
+            referralReason: referral.referralReason,
+            urgency: referral.urgency,
+            clinicalNotesSummary: referral.clinicalNotesSummary,
+            status: referral.status,
+            syncState: referral.syncState,
+            createdAt: referral.createdAt,
+            updatedAt: referral.updatedAt,
+          );
+        }
+
         // Attempt API synchronization
         try {
-          await apiService.createReferral(referral);
+          await apiService.createReferral(referralToSend);
         } on DuplicateReferralException catch (dupEx) {
           // Reconcile 409 Duplicate: check if referral exists on server
           try {

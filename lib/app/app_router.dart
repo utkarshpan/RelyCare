@@ -12,6 +12,7 @@ import '../screens/referrals/referrals_screen.dart';
 import '../screens/sync/sync_status_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/user_tracking/user_tracking_screen.dart';
+import '../models/referral.dart';
 import '../providers/auth_provider.dart';
 
 /// Centralized GoRouter navigation configuration for RelyCare.
@@ -49,12 +50,12 @@ class AppRouter {
 
         // Authenticated user landing on the login page → send to their dashboard.
         if (isAuthenticated && state.matchedLocation == login) {
-          switch (authProvider.selectedRole) {
-            case 'Hospital Staff':
+          switch (authProvider.currentRole) {
+            case UserRole.hospitalStaff:
               return hospitalDashboard;
-            case 'Patient':
+            case UserRole.patient:
               return userTracking;
-            default:
+            case UserRole.phcStaff:
               return phcDashboard;
           }
         }
@@ -157,7 +158,8 @@ class AppRouter {
           path: referralDetails,
           name: 'referralDetails',
           builder: (BuildContext context, GoRouterState state) {
-            return const ReferralDetailsScreen();
+            final referral = state.extra as Referral?;
+            return ReferralDetailsScreen(referral: referral);
           },
         ),
         GoRoute(

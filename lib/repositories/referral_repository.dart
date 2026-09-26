@@ -1,4 +1,5 @@
 // ignore_for_file: prefer_initializing_formals
+import '../core/utils/facility_normalizer.dart';
 import '../models/referral.dart';
 import '../models/referral_status.dart';
 import '../services/local_storage/local_storage_service.dart';
@@ -35,6 +36,9 @@ class ReferralRepository {
 
   /// Creates a new referral offline using atomic LocalStorage transaction.
   /// Persists Patient, Referral (CREATED), Event (CREATED), and SyncQueue item (PENDING) in SQLite.
+  /// Evaluates network connectivity:
+  /// - If ONLINE: triggers immediate API sync via SyncService.
+  /// - If OFFLINE (or API sync fails): triggers SMS fallback and records SMS_SENT/SMS_FAILED event.
   Future<Referral> createReferralOffline({
     required String patientName,
     required int patientAge,
@@ -48,15 +52,20 @@ class ReferralRepository {
     ReferralUrgency urgency = ReferralUrgency.routine,
     String? customReferralId,
     String? createdByStaff,
+    String? recipientPhoneNumber,
+    bool autoSync = true,
   }) async {
+    final actualSourceFacility = FacilityNormalizer.normalizeSourceFacility(sourceFacility);
+    final actualDestFacility = FacilityNormalizer.normalizeDestinationFacility(destinationFacility);
+
     final row = await localStorage.createReferralTransaction(
       patientName: patientName,
       patientAge: patientAge,
       patientGender: patientGender,
       patientPhone: patientPhone,
       patientLocation: patientLocation,
-      sourceFacility: sourceFacility,
-      destinationFacility: destinationFacility,
+      sourceFacility: actualSourceFacility,
+      destinationFacility: actualDestFacility,
       reason: reason,
       clinicalNotes: clinicalNotes,
       urgency: urgency,
@@ -73,7 +82,47 @@ class ReferralRepository {
     if (domainReferral == null) {
       throw const StorageException('Failed to retrieve created referral from local database');
     }
-    return domainReferral;
+
+    if (autoSync) {
+      // Evaluate connectivity and execute the appropriate channel
+      final isOnline = await connectivityService.checkConnectivity();
+      if (isOnline) {
+        try {
+          await syncService.syncPendingReferrals();
+        } catch (e) {
+          AppLogger.warning(
+            'Immediate API sync threw exception: $e',
+            'ReferralRepository',
+          );
+        }
+
+        // Check the actual persisted sync state in SQLite
+        final syncCheck = await localStorage.getDomainReferralById(row.referralId);
+        if (syncCheck != null && syncCheck.syncState != SyncState.synced) {
+          AppLogger.warning(
+            'Referral ${row.referralId} remains unsynced after online sync pass (state: ${syncCheck.syncState}). Triggering SMS fallback channel if configured.',
+            'ReferralRepository',
+          );
+          if (recipientPhoneNumber != null && recipientPhoneNumber.trim().isNotEmpty) {
+            await sendSmsFallback(
+              domainReferral.referralToken,
+              recipientPhoneNumber: recipientPhoneNumber.trim(),
+            );
+          }
+        }
+      } else {
+        // Offline mode: automatically dispatch SMS fallback ONLY if recipient phone is explicitly configured
+        if (recipientPhoneNumber != null && recipientPhoneNumber.trim().isNotEmpty) {
+          await sendSmsFallback(
+            domainReferral.referralToken,
+            recipientPhoneNumber: recipientPhoneNumber.trim(),
+          );
+        }
+      }
+    }
+
+    final updated = await localStorage.getDomainReferralById(row.referralId);
+    return updated ?? domainReferral;
   }
 
   /// Creates a referral from a domain Referral entity using the atomic transaction.
@@ -126,6 +175,7 @@ class ReferralRepository {
   /// Sends a privacy-safe compact SMS fallback message for a locally stored referral.
   ///
   /// Rules:
+  /// - Requires an explicitly configured [recipientPhoneNumber].
   /// - Verifies local existence of referral.
   /// - Prevents duplicate successful sends unless [forceRetry] is true.
   /// - Records SMS_SENT or SMS_FAILED event in SQLite timeline.
@@ -133,9 +183,20 @@ class ReferralRepository {
   /// - Does NOT modify referral syncStatus (SMS is independent from API sync).
   Future<SmsResult> sendSmsFallback(
     String referralToken, {
-    required String recipientPhoneNumber,
+    String? recipientPhoneNumber,
     bool forceRetry = false,
   }) async {
+    if (recipientPhoneNumber == null || recipientPhoneNumber.trim().isEmpty) {
+      AppLogger.warning(
+        'SMS fallback skipped for $referralToken: No recipient phone number configured.',
+        'ReferralRepository',
+      );
+      return SmsResult.failure(
+        payload: '',
+        errorMessage: 'Recipient phone number is required for SMS fallback',
+      );
+    }
+
     final referral = await localStorage.getDomainReferralById(referralToken);
     if (referral == null) {
       return SmsResult.failure(
@@ -157,9 +218,11 @@ class ReferralRepository {
       );
     }
 
+    final normalizedPhone = recipientPhoneNumber.trim();
+
     // Dispatch SMS via service abstraction
     final result = await smsService.sendReferralSms(
-      recipientPhoneNumber: recipientPhoneNumber,
+      recipientPhoneNumber: normalizedPhone,
       referral: referral,
     );
 
@@ -170,7 +233,7 @@ class ReferralRepository {
         eventType: 'SMS_SENT',
         facility: referral.sourceFacilityId,
         performedBy: 'SMS Fallback Gateway',
-        metadata: 'SMS dispatched to $recipientPhoneNumber (ID: ${result.messageId})',
+        metadata: 'SMS dispatched to $normalizedPhone (ID: ${result.messageId})',
       );
     } else {
       await localStorage.addReferralEvent(

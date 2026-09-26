@@ -170,17 +170,37 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Logs out active user, clears JWT from secure storage, and resets in-memory state.
+  /// Always reconciles in-memory authentication state even if a secure storage cleanup operation throws.
   /// Does NOT delete local SQLite referral data or pending queue records.
   Future<void> logout() async {
-    await _authStorage.deleteToken();
-    await _authStorage.clearCachedUser();
+    Object? storageError;
+    try {
+      await _authStorage.deleteToken();
+    } catch (e, stack) {
+      storageError = e;
+      AppLogger.error('Failed to delete auth token during logout', e, stack, 'AuthProvider');
+    }
+
+    try {
+      await _authStorage.clearCachedUser();
+    } catch (e) {
+      storageError ??= e;
+      AppLogger.warning('Failed to clear cached user during logout: $e', 'AuthProvider');
+    }
+
+    // Always clear in-memory state so the session is never left in an inconsistent authenticated state
     _apiService.setAuthToken(null);
     _isAuthenticated = false;
     _currentUser = null;
     if (!_rememberMe) {
       _emailOrPhone = '';
     }
-    AppLogger.info('User logged out successfully', 'AuthProvider');
+
+    if (storageError != null) {
+      _errorMessage = 'Logout completed with storage warning: $storageError';
+    }
+
+    AppLogger.info('User logged out and in-memory session reset', 'AuthProvider');
     notifyListeners();
   }
 }

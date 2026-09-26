@@ -86,7 +86,8 @@ class SyncProvider extends ChangeNotifier {
   Future<void> refreshPendingCount() => refreshCounts();
 
   /// Triggers a synchronization pass for eligible pending/failed queue items.
-  Future<int> syncPending() async {
+  /// [resetFailed] should only be true when initiated via manual user action ("Sync Now").
+  Future<int> syncPending({bool resetFailed = false}) async {
     if (_isSyncing || _isDisposed) {
       return 0;
     }
@@ -96,6 +97,9 @@ class SyncProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (resetFailed) {
+        await syncRepository.resetFailedItems();
+      }
       final syncedCount = await syncRepository.triggerSync();
       _lastSyncTime = DateTime.now().toIso8601String();
       _syncError = null;

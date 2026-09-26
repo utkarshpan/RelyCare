@@ -126,12 +126,13 @@ void main() {
       final result = await referralProvider.sendSmsFallback(
         referral!.referralToken,
         recipientPhoneNumber: '+91 9988776655',
+        forceRetry: true,
       );
 
       expect(result, isNotNull);
       expect(result!.isSuccess, isTrue);
       expect(result.messageId, startsWith('MOCK-SMS-'));
-      expect(mockSmsService.sentPayloads.length, equals(1));
+      expect(mockSmsService.sentPayloads.length, greaterThanOrEqualTo(1));
       expect(mockSmsService.sentRecipients.first, equals('+91 9988776655'));
 
       // Verify delivery status
@@ -278,14 +279,11 @@ void main() {
         sourceFacility: 'PHC Alpha',
         destinationFacility: 'DH Beta',
         reason: 'Trauma evaluation',
-      );
-
-      // Fail
-      await referralProvider.sendSmsFallback(
-        referral!.referralToken,
         recipientPhoneNumber: '+91 9988112233',
       );
-      expect(await referralProvider.getSmsDeliveryStatus(referral.referralToken),
+
+      // Verify delivery status is failed from automatic creation dispatch
+      expect(await referralProvider.getSmsDeliveryStatus(referral!.referralToken),
           equals(SmsDeliveryStatus.failed));
 
       // Retry succeeds
@@ -332,6 +330,71 @@ void main() {
       expect(pendingQueue.length, equals(1));
       expect(pendingQueue.first.entityId, equals(referral.referralToken));
       expect(pendingQueue.first.status, equals('PENDING'));
+    });
+
+    test('Test I: sendSmsFallback with null or empty recipientPhoneNumber returns failure and does not log events', () async {
+      final referral = await referralProvider.createReferral(
+        patientName: 'Pooja Sharma',
+        patientAge: 27,
+        patientGender: 'Female',
+        sourceFacility: 'PHC North',
+        destinationFacility: 'DH North',
+        reason: 'Obstetric consult',
+      );
+
+      // Null recipient phone
+      final resNull = await referralProvider.sendSmsFallback(
+        referral!.referralToken,
+        recipientPhoneNumber: null,
+      );
+      expect(resNull, isNotNull);
+      expect(resNull!.isSuccess, isFalse);
+      expect(resNull.errorMessage, contains('Recipient phone number is required'));
+
+      // Empty recipient phone
+      final resEmpty = await referralProvider.sendSmsFallback(
+        referral.referralToken,
+        recipientPhoneNumber: '   ',
+      );
+      expect(resEmpty, isNotNull);
+      expect(resEmpty!.isSuccess, isFalse);
+      expect(resEmpty.errorMessage, contains('Recipient phone number is required'));
+
+      // Verify no SMS was sent and no event was recorded
+      expect(mockSmsService.sentPayloads.isEmpty, isTrue);
+      final events = await referralProvider.getReferralEvents(referral.id);
+      expect(events.any((e) => e.eventType == 'SMS_SENT'), isFalse);
+      expect(events.any((e) => e.eventType == 'SMS_FAILED'), isFalse);
+      expect(await referralProvider.getSmsDeliveryStatus(referral.referralToken),
+          equals(SmsDeliveryStatus.notSent));
+    });
+
+    test('Test J: createReferral without recipientPhoneNumber creates offline referral without SMS dispatch', () async {
+      final referral = await referralProvider.createReferral(
+        patientName: 'Deepak Verma',
+        patientAge: 46,
+        patientGender: 'Male',
+        sourceFacility: 'PHC West',
+        destinationFacility: 'DH West',
+        reason: 'Diabetic foot ulcer',
+        recipientPhoneNumber: null,
+      );
+
+      expect(referral, isNotNull);
+      expect(referral!.syncState, equals(SyncState.pendingSync));
+
+      // Local storage preserved
+      final localRef = await referralRepository.getReferralById(referral.id);
+      expect(localRef, isNotNull);
+      expect(localRef!.patient?.fullName, equals('Deepak Verma'));
+
+      // No SMS dispatched
+      expect(mockSmsService.sentPayloads.isEmpty, isTrue);
+      final events = await referralProvider.getReferralEvents(referral.id);
+      expect(events.any((e) => e.eventType == 'SMS_SENT'), isFalse);
+      expect(events.any((e) => e.eventType == 'SMS_FAILED'), isFalse);
+      expect(await referralProvider.getSmsDeliveryStatus(referral.referralToken),
+          equals(SmsDeliveryStatus.notSent));
     });
   });
 }

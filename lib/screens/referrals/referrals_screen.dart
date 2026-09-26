@@ -126,7 +126,7 @@ class _ReferralsScreenState extends State<ReferralsScreen> {
                   referral: referral,
                   onTap: () {
                     provider.selectReferral(referral);
-                    context.push('/referral-details');
+                    context.push('/referral-details', extra: referral);
                   },
                 );
               },

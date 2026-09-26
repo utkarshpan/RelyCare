@@ -84,6 +84,16 @@ class SyncQueueDao extends DatabaseAccessor<AppDatabase> with _$SyncQueueDaoMixi
     );
   }
 
+  /// Resets all failed items to PENDING with retryCount reset to 0 for manual retry.
+  Future<int> resetFailedItemsToPending() {
+    return (update(syncQueue)..where((tbl) => tbl.status.equals('FAILED'))).write(
+      const SyncQueueCompanion(
+        status: Value('PENDING'),
+        retryCount: Value(0),
+      ),
+    );
+  }
+
   /// Deletes a sync queue item by its ID.
   Future<int> deleteQueueItem(int id) =>
       (delete(syncQueue)..where((tbl) => tbl.id.equals(id))).go();

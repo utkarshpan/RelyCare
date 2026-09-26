@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
+import '../../providers/auth_provider.dart';
 
 /// Public read-only screen for patients and family members to track referral status.
 /// No authentication required — accessible via the "Track your referral here" link on Login.
@@ -231,11 +233,17 @@ class _UserTrackingScreenState extends State<UserTrackingScreen>
               children: [
                 // Back Button
                 GestureDetector(
-                  onTap: () {
+                  onTap: () async {
                     if (context.canPop()) {
                       context.pop();
                     } else {
-                      context.go('/login');
+                      final authProvider = context.read<AuthProvider>();
+                      if (authProvider.isAuthenticated) {
+                        await authProvider.logout();
+                      }
+                      if (mounted) {
+                        context.go('/login');
+                      }
                     }
                   },
                   child: Container(

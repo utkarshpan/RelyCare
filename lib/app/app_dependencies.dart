@@ -51,7 +51,13 @@ class AppDependencies {
     IdentityMatchingProvider? identityMatchingProvider,
   }) {
     final storage = localStorage ?? LocalStorageServiceImpl();
-    final api = apiService ?? ApiServiceImpl(baseUrl: 'http://localhost:8000/api/v1');
+    final api = apiService ??
+        ApiServiceImpl(
+          baseUrl: const String.fromEnvironment(
+            'API_BASE_URL',
+            defaultValue: 'http://localhost:8000/api/v1',
+          ),
+        );
     final connectivity = connectivityService ?? ConnectivityServiceImpl();
     final sms = smsService ?? MockSmsService();
     final matching = matchingService ?? MatchingService();

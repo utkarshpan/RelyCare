@@ -17,7 +17,10 @@ class AppConfig {
   /// Default configuration for local development / hackathon demo
   static const AppConfig development = AppConfig(
     environment: AppEnvironment.development,
-    apiBaseUrl: 'http://localhost:8000/api/v1',
+    apiBaseUrl: String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: 'http://localhost:8000/api/v1',
+    ),
     enableOfflineMocking: true,
     enableDebugLogs: true,
   );
