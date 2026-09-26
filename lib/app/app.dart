@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../core/theme/app_theme.dart';
 import '../core/constants/app_constants.dart';
 import '../providers/auth_provider.dart';
+import '../providers/user_profile_provider.dart';
+import '../providers/referral_journey_provider.dart';
 import 'app_dependencies.dart';
 import 'app_router.dart';
 
@@ -50,6 +52,8 @@ class _RelyCareAppState extends State<RelyCareApp> {
           ChangeNotifierProvider.value(value: activeDependencies.connectivityProvider),
           ChangeNotifierProvider.value(value: activeDependencies.syncProvider),
           ChangeNotifierProvider.value(value: activeDependencies.identityMatchingProvider),
+          ChangeNotifierProvider(create: (_) => UserProfileProvider()),
+          ChangeNotifierProvider(create: (_) => ReferralJourneyProvider()),
         ],
         child: MaterialApp.router(
           title: AppConstants.appName,
