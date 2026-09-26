@@ -1,4 +1,5 @@
 // ignore_for_file: prefer_initializing_formals
+import '../core/utils/facility_normalizer.dart';
 import '../models/referral.dart';
 import '../models/referral_status.dart';
 import '../services/local_storage/local_storage_service.dart';
@@ -52,13 +53,10 @@ class ReferralRepository {
     String? customReferralId,
     String? createdByStaff,
     String recipientPhoneNumber = '+91 9988776655',
+    bool autoSync = true,
   }) async {
-    final actualSourceFacility = (sourceFacility.trim() == 'PHC-001')
-        ? 'PHC-TEST'
-        : sourceFacility;
-    final actualDestFacility = (destinationFacility.trim() == 'District Hospital' || destinationFacility.trim() == 'UNKNOWN')
-        ? 'DH-TEST'
-        : destinationFacility;
+    final actualSourceFacility = FacilityNormalizer.normalizeSourceFacility(sourceFacility);
+    final actualDestFacility = FacilityNormalizer.normalizeDestinationFacility(destinationFacility);
 
     final row = await localStorage.createReferralTransaction(
       patientName: patientName,
@@ -85,27 +83,38 @@ class ReferralRepository {
       throw const StorageException('Failed to retrieve created referral from local database');
     }
 
-    // Evaluate connectivity and execute the appropriate channel
-    final isOnline = await connectivityService.checkConnectivity();
-    if (isOnline) {
-      try {
-        await syncService.syncPendingReferrals();
-      } catch (e) {
-        AppLogger.warning(
-          'Immediate API sync failed: $e, invoking SMS fallback',
-          'ReferralRepository',
-        );
+    if (autoSync) {
+      // Evaluate connectivity and execute the appropriate channel
+      final isOnline = await connectivityService.checkConnectivity();
+      if (isOnline) {
+        try {
+          await syncService.syncPendingReferrals();
+        } catch (e) {
+          AppLogger.warning(
+            'Immediate API sync threw exception: $e',
+            'ReferralRepository',
+          );
+        }
+
+        // Check the actual persisted sync state in SQLite
+        final syncCheck = await localStorage.getDomainReferralById(row.referralId);
+        if (syncCheck != null && syncCheck.syncState != SyncState.synced) {
+          AppLogger.warning(
+            'Referral ${row.referralId} remains unsynced after online sync pass (state: ${syncCheck.syncState}). Triggering SMS fallback channel.',
+            'ReferralRepository',
+          );
+          await sendSmsFallback(
+            domainReferral.referralToken,
+            recipientPhoneNumber: recipientPhoneNumber,
+          );
+        }
+      } else {
+        // Offline mode: automatically dispatch SMS fallback
         await sendSmsFallback(
           domainReferral.referralToken,
           recipientPhoneNumber: recipientPhoneNumber,
         );
       }
-    } else {
-      // Offline mode: automatically dispatch SMS fallback
-      await sendSmsFallback(
-        domainReferral.referralToken,
-        recipientPhoneNumber: recipientPhoneNumber,
-      );
     }
 
     final updated = await localStorage.getDomainReferralById(row.referralId);

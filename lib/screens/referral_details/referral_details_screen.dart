@@ -24,6 +24,29 @@ class ReferralDetailsScreen extends StatefulWidget {
 
 class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   final int _currentNavIndex = 1; // Highlight 'Incoming'
+  String? _cachedToken;
+  Future<SmsDeliveryStatus>? _cachedSmsStatusFuture;
+
+  @override
+  void didUpdateWidget(ReferralDetailsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.referral?.referralToken != widget.referral?.referralToken) {
+      _cachedToken = null;
+      _cachedSmsStatusFuture = null;
+    }
+  }
+
+  void _ensureSmsStatusCached(String? token, ReferralProvider referralProvider) {
+    if (token == null || token.isEmpty) {
+      _cachedToken = null;
+      _cachedSmsStatusFuture = Future.value(SmsDeliveryStatus.notSent);
+      return;
+    }
+    if (_cachedToken != token || _cachedSmsStatusFuture == null) {
+      _cachedToken = token;
+      _cachedSmsStatusFuture = referralProvider.getSmsDeliveryStatus(token);
+    }
+  }
 
   void _handleUpdateStatus() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -42,6 +65,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
     final size = MediaQuery.of(context).size;
     final referralProvider = context.watch<ReferralProvider>();
     final activeReferral = widget.referral ?? referralProvider.selectedReferral;
+    _ensureSmsStatusCached(activeReferral?.referralToken, referralProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -693,9 +717,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   /// 3. Referral Timeline Card with Vertical Connected Progress Dots
   Widget _buildTimelineCard(Referral? referral) {
     return FutureBuilder<SmsDeliveryStatus>(
-      future: referral != null
-          ? context.read<ReferralProvider>().getSmsDeliveryStatus(referral.referralToken)
-          : Future.value(SmsDeliveryStatus.notSent),
+      future: _cachedSmsStatusFuture,
       builder: (context, snapshot) {
         final smsStatus = snapshot.data ?? SmsDeliveryStatus.notSent;
         final wasSmsSent = smsStatus == SmsDeliveryStatus.sent;

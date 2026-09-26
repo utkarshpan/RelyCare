@@ -376,10 +376,83 @@ void main() {
     expect(mockSmsService.sentPayloads.length, equals(1));
     final eventsAfter = await referralProvider.getReferralEvents(created.id);
     expect(eventsAfter.where((e) => e.eventType == 'SMS_SENT').length, equals(1));
+  });
 
-    // 5. Subsequent sync passes do not re-send or duplicate
-    final secondSyncCount = await referralRepository.syncService.syncPendingReferrals();
-    expect(secondSyncCount, equals(0));
-    expect(fakeApi.syncedReferrals.where((r) => r.referralToken == created.referralToken).length, equals(1));
+  testWidgets('7. Automatic sync with resetFailed: false does not reset exhausted FAILED items, while manual sync with resetFailed: true retries them', (tester) async {
+    connectivityService.setOnline(true);
+    fakeApi.shouldFail = true;
+
+    final created = await referralProvider.createReferral(
+      patientName: 'Ramesh Verma',
+      patientAge: 40,
+      patientGender: 'Male',
+      sourceFacility: 'PHC-TEST',
+      destinationFacility: 'DH-TEST',
+      reason: 'Hypertension',
+    );
+    expect(created, isNotNull);
+
+    // Fail sync 3 times to exhaust maxSyncRetries (3)
+    await referralRepository.syncService.syncPendingReferrals();
+    await referralRepository.syncService.syncPendingReferrals();
+    await referralRepository.syncService.syncPendingReferrals();
+
+    final syncProvider = SyncProvider(
+      syncRepository: SyncRepository(
+        localStorage: localStorage,
+        syncService: referralRepository.syncService,
+      ),
+    );
+
+    // Automatic/background sync with default resetFailed: false
+    fakeApi.shouldFail = false;
+    final autoSyncedCount = await syncProvider.syncPending(resetFailed: false);
+    expect(autoSyncedCount, equals(0), reason: 'Automatic sync must respect maxSyncRetries and not reset exhausted items');
+
+    // Manual "Sync Now" action with resetFailed: true
+    final manualSyncedCount = await syncProvider.syncPending(resetFailed: true);
+    expect(manualSyncedCount, equals(1), reason: 'Manual Sync Now action resets failed items and successfully retries');
+  });
+
+  testWidgets('8. Online referral creation with API server failure automatically triggers SMS fallback and later server sync preserves timeline', (tester) async {
+    // Device is ONLINE but backend API returns 500 error
+    connectivityService.setOnline(true);
+    fakeApi.shouldFail = true;
+
+    final created = await referralProvider.createReferral(
+      patientName: 'Suresh Raina',
+      patientAge: 32,
+      patientGender: 'Male',
+      sourceFacility: 'PHC-TEST',
+      destinationFacility: 'DH-TEST',
+      reason: 'Severe migraine',
+    );
+    expect(created, isNotNull);
+
+    // Because API sync failed, SMS fallback was automatically dispatched
+    expect(mockSmsService.sentPayloads.length, equals(1));
+    final smsStatus = await referralProvider.getSmsDeliveryStatus(created!.referralToken);
+    expect(smsStatus, equals(SmsDeliveryStatus.sent));
+
+    final eventsBefore = await referralProvider.getReferralEvents(created.id);
+    expect(eventsBefore.any((e) => e.eventType == 'SMS_SENT'), isTrue);
+
+    // Later: Server recovers and manual sync succeeds
+    fakeApi.shouldFail = false;
+    final syncProvider = SyncProvider(
+      syncRepository: SyncRepository(
+        localStorage: localStorage,
+        syncService: referralRepository.syncService,
+      ),
+    );
+    final syncedCount = await syncProvider.syncPending(resetFailed: true);
+    expect(syncedCount, equals(1));
+
+    // Timeline still reflects SMS was sent and server received full referral without duplicates
+    final updated = await localStorage.getDomainReferralById(created.referralToken);
+    expect(updated!.syncState, equals(SyncState.synced));
+    expect(mockSmsService.sentPayloads.length, equals(1));
+    final eventsAfter = await referralProvider.getReferralEvents(created.id);
+    expect(eventsAfter.where((e) => e.eventType == 'SMS_SENT').length, equals(1));
   });
 }

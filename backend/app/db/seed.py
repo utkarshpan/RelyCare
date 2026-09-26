@@ -1,13 +1,26 @@
 import os
+import logging
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.models.facility import FacilityModel
 from app.models.user import UserModel
 from app.core.security import hash_password
 
+logger = logging.getLogger("relycare.db.seed")
 
-def seed_facilities_and_users(db: Session) -> None:
-    """Idempotently seed required demo facilities and users into PostgreSQL."""
+
+def is_demo_seeding_allowed() -> bool:
+    """Explicit environment/configuration guard against accidentally seeding demo credentials into production."""
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    allow_seed_env = os.getenv("ALLOW_DEMO_SEEDING")
+    if allow_seed_env is not None:
+        return allow_seed_env.strip().lower() in ("true", "1", "yes")
+    # By default, allow demo seeding in non-production environments
+    return env not in ("production", "prod")
+
+
+def seed_facilities_and_users(db: Session, force: bool = False) -> None:
+    """Idempotently seed required facilities and development/demo users into PostgreSQL."""
     # 1. Seed or update required facilities
     facilities_data = [
         {
@@ -39,6 +52,13 @@ def seed_facilities_and_users(db: Session) -> None:
             fac.facility_type = f_data["facility_type"]
             fac.is_active = f_data["is_active"]
     db.commit()
+
+    # Guard demo users against production deployment unless explicitly allowed or forced
+    if not is_demo_seeding_allowed() and not force:
+        logger.warning(
+            "Demo user seeding skipped: ENVIRONMENT is set to production and ALLOW_DEMO_SEEDING is not enabled."
+        )
+        return
 
     # 2. Seed standard demo users (Password: 12345678)
     demo_users_data = [
@@ -136,6 +156,12 @@ def seed_facilities_and_users(db: Session) -> None:
 
 def seed_development_data():
     """Entrypoint for executing the development seed script."""
+    if not is_demo_seeding_allowed():
+        raise RuntimeError(
+            "Demo user seeding is blocked in production environment. "
+            "Set ALLOW_DEMO_SEEDING=true if you explicitly intend to seed demo credentials."
+        )
+
     db = SessionLocal()
     try:
         seed_facilities_and_users(db)

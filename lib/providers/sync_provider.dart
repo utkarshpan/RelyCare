@@ -86,7 +86,8 @@ class SyncProvider extends ChangeNotifier {
   Future<void> refreshPendingCount() => refreshCounts();
 
   /// Triggers a synchronization pass for eligible pending/failed queue items.
-  Future<int> syncPending({bool resetFailed = true}) async {
+  /// [resetFailed] should only be true when initiated via manual user action ("Sync Now").
+  Future<int> syncPending({bool resetFailed = false}) async {
     if (_isSyncing || _isDisposed) {
       return 0;
     }

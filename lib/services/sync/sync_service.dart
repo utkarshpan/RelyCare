@@ -6,6 +6,7 @@ import '../connectivity/connectivity_service.dart';
 import '../../models/referral.dart';
 import '../../core/errors/app_exceptions.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/facility_normalizer.dart';
 import '../../core/utils/logger.dart';
 
 /// Orchestration service responsible for processing the offline sync queue,
@@ -181,12 +182,12 @@ class SyncService {
         }
 
         var referralToSend = referral;
-        final normalizedSource = (referral.sourceFacilityId == 'PHC-001' || referral.sourceFacilityId.trim().isEmpty)
-            ? 'PHC-TEST'
-            : referral.sourceFacilityId;
-        final normalizedDest = (referral.destinationFacilityId == 'District Hospital' || referral.destinationFacilityId == 'UNKNOWN' || referral.destinationFacilityId.trim().isEmpty)
-            ? 'DH-TEST'
-            : referral.destinationFacilityId;
+        final normalizedSource = FacilityNormalizer.normalizeSourceFacility(
+          referral.sourceFacilityId.trim().isEmpty ? FacilityNormalizer.defaultPhcFacility : referral.sourceFacilityId,
+        );
+        final normalizedDest = FacilityNormalizer.normalizeDestinationFacility(
+          referral.destinationFacilityId.trim().isEmpty ? FacilityNormalizer.defaultHospitalFacility : referral.destinationFacilityId,
+        );
         if (normalizedSource != referral.sourceFacilityId || normalizedDest != referral.destinationFacilityId) {
           referralToSend = Referral(
             id: referral.id,

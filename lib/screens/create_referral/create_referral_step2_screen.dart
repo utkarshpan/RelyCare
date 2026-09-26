@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/facility_normalizer.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/referral_provider.dart';
 import '../../models/referral.dart';
@@ -52,15 +53,14 @@ class _CreateReferralStep2ScreenState extends State<CreateReferralStep2Screen> {
     final referralProvider = Provider.of<ReferralProvider>(context, listen: false);
 
     final currentUser = authProvider.currentUser;
-    final userFacility = (currentUser != null && currentUser.facilityId.isNotEmpty)
+    final rawUserFacility = (currentUser != null && currentUser.facilityId.isNotEmpty)
         ? currentUser.facilityId
-        : 'PHC-TEST';
+        : FacilityNormalizer.defaultPhcFacility;
 
-    final destinationFacility = (_selectedDestination == null ||
-            _selectedDestination == 'District Hospital' ||
-            _selectedDestination == 'UNKNOWN')
-        ? 'DH-TEST'
-        : _selectedDestination!;
+    final userFacility = FacilityNormalizer.normalizeSourceFacility(rawUserFacility);
+    final destinationFacility = FacilityNormalizer.normalizeDestinationFacility(
+      _selectedDestination ?? FacilityNormalizer.defaultHospitalFacility,
+    );
 
     // Create Patient and Referral model instances
     final patient = Patient(

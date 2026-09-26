@@ -515,6 +515,7 @@ void main() {
     // 3. Directly tap Sync in bottom navigation from Identity Matching
     final syncNav = find.text('Sync');
     await tester.tap(syncNav.first);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 150)));
     await tester.pumpAndSettle();
     expect(find.text('Sync & Connectivity'), findsOneWidget);
 

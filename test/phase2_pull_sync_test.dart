@@ -795,6 +795,7 @@ void main() {
         destinationFacility: 'DH-01',
         reason: 'Local unpushed reason',
         customReferralId: 'RC-PENDING-001',
+        autoSync: false,
       );
 
       final patientCountBefore = (await db.select(db.patients).get()).length;
@@ -846,6 +847,7 @@ void main() {
         destinationFacility: 'DH-01',
         reason: 'Reconciliation test',
         customReferralId: 'RC-DUP-001',
+        autoSync: false,
       );
 
 
@@ -892,6 +894,7 @@ void main() {
         destinationFacility: 'DH-01',
         reason: 'Reconciliation fail test',
         customReferralId: 'RC-DUP-FAIL-001',
+        autoSync: false,
       );
 
       apiService.shouldThrowDuplicateOnCreate = true;

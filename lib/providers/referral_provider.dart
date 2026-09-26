@@ -98,6 +98,7 @@ class ReferralProvider extends ChangeNotifier {
     String? customReferralId,
     String? createdByStaff,
     String recipientPhoneNumber = '+91 9988776655',
+    bool autoSync = true,
   }) async {
     // Prevent duplicate simultaneous submissions
     if (_isCreating || _isDisposed) {
@@ -123,6 +124,7 @@ class ReferralProvider extends ChangeNotifier {
         customReferralId: customReferralId,
         createdByStaff: createdByStaff,
         recipientPhoneNumber: recipientPhoneNumber,
+        autoSync: autoSync,
       );
 
       if (!_isDisposed) {

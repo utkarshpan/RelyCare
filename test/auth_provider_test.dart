@@ -128,6 +128,20 @@ void main() {
       assert(token == null);
     });
 
+    test('Partial logout failure still clears in-memory authenticated session', () async {
+      final failingStorage = _FailingClearUserStorageService(mockStorage);
+      final provider = AuthProvider(apiService: mockApi, authStorage: failingStorage);
+      await provider.login(emailOrPhone: 'user@test.org', password: 'password123');
+      expect(provider.isAuthenticated, isTrue);
+
+      await provider.logout();
+
+      expect(provider.isAuthenticated, isFalse);
+      expect(provider.currentUser, isNull);
+      expect(mockApi.authToken, isNull);
+      expect(provider.errorMessage, contains('Logout completed with storage warning'));
+    });
+
     test('UserRole parsing correctly maps PHC_STAFF, HOSPITAL_STAFF, and PATIENT', () {
       expect(UserRole.fromString('PHC_STAFF'), UserRole.phcStaff);
       expect(UserRole.fromString('HOSPITAL_STAFF'), UserRole.hospitalStaff);
@@ -137,4 +151,41 @@ void main() {
       expect(UserRole.fromString('Patient'), UserRole.patient);
     });
   });
+}
+
+class _FailingClearUserStorageService implements AuthStorageService {
+  final AuthStorageService delegate;
+  _FailingClearUserStorageService(this.delegate);
+
+  @override
+  Future<void> saveToken(String token) => delegate.saveToken(token);
+
+  @override
+  Future<String?> getToken() => delegate.getToken();
+
+  @override
+  Future<void> deleteToken() => delegate.deleteToken();
+
+  @override
+  Future<void> saveCachedUser(UserModel user) => delegate.saveCachedUser(user);
+
+  @override
+  Future<UserModel?> getCachedUser() => delegate.getCachedUser();
+
+  @override
+  Future<void> clearCachedUser() async {
+    throw Exception('Simulated disk/secure storage I/O failure');
+  }
+
+  @override
+  Future<void> saveRememberedUser(String emailOrPhone) => delegate.saveRememberedUser(emailOrPhone);
+
+  @override
+  Future<String?> getRememberedUser() => delegate.getRememberedUser();
+
+  @override
+  Future<void> clearRememberedUser() => delegate.clearRememberedUser();
+
+  @override
+  Future<void> clearSession() => delegate.clearSession();
 }
