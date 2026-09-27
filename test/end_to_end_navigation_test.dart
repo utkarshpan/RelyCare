@@ -12,6 +12,7 @@ import 'package:relycare/models/patient.dart';
 import 'package:relycare/models/referral.dart';
 import 'package:relycare/models/user_model.dart';
 import 'package:relycare/providers/auth_provider.dart';
+import 'package:relycare/services/security/auth_storage_service.dart';
 
 import 'package:relycare/providers/connectivity_provider.dart';
 import 'package:relycare/providers/identity_matching_provider.dart';
@@ -175,12 +176,18 @@ void main() {
     syncProvider = SyncProvider(syncRepository: syncRepo, connectivityProvider: connectivityProvider);
     matchingProvider = IdentityMatchingProvider(matchingService: matching);
 
+    final authStorage = AuthStorageServiceImpl();
+    await authStorage.clearSession();
+    final authProvider = AuthProvider(apiService: api, authStorage: authStorage);
+
     dependencies = AppDependencies(
       localStorage: storage,
       apiService: api,
       connectivityService: connectivity,
       smsService: sms,
       matchingService: matching,
+      authStorageService: authStorage,
+      authProvider: authProvider,
       patientRepository: patientRepo,
       referralRepository: referralRepo,
       syncRepository: syncRepo,
@@ -189,9 +196,11 @@ void main() {
       syncProvider: syncProvider,
       identityMatchingProvider: matchingProvider,
     );
+    await syncProvider.refreshCounts();
   });
 
   tearDown(() async {
+    dependencies.authProvider.dispose();
     referralProvider.dispose();
     connectivityProvider.dispose();
     syncProvider.dispose();
@@ -293,9 +302,9 @@ void main() {
     await tester.enterText(formFields.at(1), '32');
     
     // Select Gender
-    await tester.tap(find.text('Select Gender'));
+    await tester.tap(find.text('Select Gender'), warnIfMissed: false);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Female').last);
+    await tester.tap(find.text('Female').last, warnIfMissed: false);
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).at(2), '9876543210');
@@ -325,21 +334,21 @@ void main() {
 
     // Select Destination Hospital dropdown
     await tester.ensureVisible(find.text('Select Hospital'));
-    await tester.tap(find.text('Select Hospital'));
+    await tester.tap(find.text('Select Hospital'), warnIfMissed: false);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('District Hospital').last);
+    await tester.tap(find.text('District Hospital').last, warnIfMissed: false);
     await tester.pumpAndSettle();
 
     // Select Urgency dropdown
     await tester.ensureVisible(find.text('Select Urgency'));
-    await tester.tap(find.text('Select Urgency'));
+    await tester.tap(find.text('Select Urgency'), warnIfMissed: false);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Urgent').last);
+    await tester.tap(find.text('Urgent').last, warnIfMissed: false);
     await tester.pumpAndSettle();
 
     // Tap Next / Save button
     await tester.ensureVisible(find.widgetWithText(ElevatedButton, 'Next'));
-    await tester.tap(find.widgetWithText(ElevatedButton, 'Next'));
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Next'), warnIfMissed: false);
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
     await tester.pumpAndSettle();
 
@@ -350,6 +359,7 @@ void main() {
     final localReferrals = await storage.getAllReferrals();
     expect(localReferrals.length, equals(1));
     expect(localReferrals.first.reason, equals('Severe abdominal pain'));
+    expect(localReferrals.first.sourceFacility, equals('PHC-TEST'));
     expect(localReferrals.first.status, equals('CREATED'));
     expect(localReferrals.first.syncStatus, equals('PENDING'));
 
@@ -426,7 +436,8 @@ void main() {
     expect(find.text('Good Morning, Dr. Verma'), findsOneWidget);
 
     // 4. Test Review Details
-    await tester.tap(find.text('Review Details').first);
+    await tester.ensureVisible(find.text('Review Details').first);
+    await tester.tap(find.text('Review Details').first, warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(find.text('Referral Details'), findsOneWidget);
 

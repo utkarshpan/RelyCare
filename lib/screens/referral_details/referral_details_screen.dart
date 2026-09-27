@@ -6,6 +6,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/utils/date_utils.dart';
 import '../../models/referral.dart';
 import '../../models/referral_status.dart';
+import '../../models/referral_guardian_status.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/referral_provider.dart';
 import '../../services/sms/sms_service.dart';
 import '../../widgets/bottom_nav_bar.dart';
@@ -15,8 +17,15 @@ import '../../widgets/bottom_nav_bar.dart';
 /// interactive vertical lifecycle timeline with GSM sync indicators, and status update actions.
 class ReferralDetailsScreen extends StatefulWidget {
   final Referral? referral;
+  final ReferralGuardianStatus guardianStatus;
+  final String? guardianExplanation;
 
-  const ReferralDetailsScreen({super.key, this.referral});
+  const ReferralDetailsScreen({
+    super.key,
+    this.referral,
+    this.guardianStatus = ReferralGuardianStatus.normal,
+    this.guardianExplanation,
+  });
 
   @override
   State<ReferralDetailsScreen> createState() => _ReferralDetailsScreenState();
@@ -48,15 +57,196 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
     }
   }
 
-  void _handleUpdateStatus() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Status update dialog opening: Select next milestone (e.g. Patient Arrived)...',
-        ),
-        backgroundColor: AppColors.primary,
-        duration: Duration(seconds: 2),
+  ReferralStatus? _getNextStatus(ReferralStatus current) {
+    switch (current) {
+      case ReferralStatus.created:
+      case ReferralStatus.queued:
+      case ReferralStatus.synced:
+      case ReferralStatus.sent:
+        return ReferralStatus.received;
+      case ReferralStatus.received:
+        return ReferralStatus.patientArrived;
+      case ReferralStatus.patientArrived:
+        return ReferralStatus.underTreatment;
+      case ReferralStatus.underTreatment:
+        return ReferralStatus.completed;
+      case ReferralStatus.completed:
+        return null;
+    }
+  }
+
+  String _getNextStatusActionLabel(ReferralStatus current) {
+    switch (current) {
+      case ReferralStatus.created:
+      case ReferralStatus.queued:
+      case ReferralStatus.synced:
+      case ReferralStatus.sent:
+        return 'Mark as Received';
+      case ReferralStatus.received:
+        return 'Mark Patient Arrived';
+      case ReferralStatus.patientArrived:
+        return 'Start Treatment';
+      case ReferralStatus.underTreatment:
+        return 'Complete Referral';
+      case ReferralStatus.completed:
+        return 'Referral Completed';
+    }
+  }
+
+  void _handleUpdateStatus(Referral referral) {
+    final nextStatus = _getNextStatus(referral.status);
+    if (nextStatus == null) return;
+    final actionLabel = _getNextStatusActionLabel(referral.status);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      builder: (bottomSheetContext) {
+        return Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Update Referral Lifecycle',
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Current Status: ${referral.status.displayName}',
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Color(0xFF16A34A),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Transition to: ${nextStatus.displayName}',
+                            style: GoogleFonts.inter(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF15803D),
+                            ),
+                          ),
+                          Text(
+                            'Update operational routing status for ${referral.referralToken}',
+                            style: GoogleFonts.inter(
+                              fontSize: 11.5,
+                              color: const Color(0xFF475569),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(bottomSheetContext),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF475569),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final auth = Provider.of<AuthProvider>(context, listen: false);
+                        final refProv = Provider.of<ReferralProvider>(context, listen: false);
+                        final messenger = ScaffoldMessenger.of(context);
+                        final facility = auth.currentUser?.facilityId ?? referral.destinationFacilityId;
+                        final staff = auth.currentUser?.username ?? 'Hospital Staff';
+                        Navigator.pop(bottomSheetContext);
+
+                        try {
+                          await refProv.updateReferralStatus(
+                            referral.referralToken,
+                            nextStatus,
+                            facilityId: facility,
+                            performedBy: staff,
+                          );
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('Referral status updated to ${nextStatus.displayName}'),
+                              backgroundColor: const Color(0xFF10B981),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        } catch (e) {
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to update status: $e'),
+                              backgroundColor: const Color(0xFFDC2626),
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        actionLabel,
+                        style: GoogleFonts.inter(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -64,8 +254,47 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final referralProvider = context.watch<ReferralProvider>();
-    final activeReferral = widget.referral ?? referralProvider.selectedReferral;
-    _ensureSmsStatusCached(activeReferral?.referralToken, referralProvider);
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final navReferral = args is Referral ? args : null;
+
+    final seedReferral = widget.referral ?? navReferral ?? referralProvider.selectedReferral;
+
+    Referral? latestFromProvider;
+    if (seedReferral != null) {
+      try {
+        latestFromProvider = referralProvider.referrals.firstWhere(
+          (r) => r.referralToken == seedReferral.referralToken,
+        );
+      } catch (_) {}
+    }
+
+    final activeReferral = latestFromProvider ??
+        seedReferral ??
+        Referral(
+          id: '1',
+          referralToken: 'RC-2026-000142',
+          patientId: 'P1',
+          sourceFacilityId: 'PHC-TEST',
+          destinationFacilityId: 'DH-TEST',
+          referralReason: 'Chest pain + breathlessness',
+          urgency: ReferralUrgency.urgent,
+          status: ReferralStatus.received,
+          syncState: SyncState.synced,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+    final effectiveEvaluation = (widget.guardianStatus != ReferralGuardianStatus.normal)
+        ? ReferralGuardianEvaluation(
+            status: widget.guardianStatus,
+            operationalSummary: widget.guardianExplanation ?? widget.guardianStatus.operationalDescription,
+          )
+        : referralProvider.evaluateGuardianStatus(referral: activeReferral);
+
+    _ensureSmsStatusCached(activeReferral.referralToken, referralProvider);
+
+    final nextStatus = _getNextStatus(activeReferral.status);
+    final isCompleted = activeReferral.status == ReferralStatus.completed;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -83,7 +312,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
             // ================= 1. CURRENT STATUS CARD =================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: _buildCurrentStatusCard(activeReferral),
+              child: _buildCurrentStatusCard(activeReferral, effectiveEvaluation),
             ),
 
             const SizedBox(height: 14),
@@ -111,14 +340,18 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: _handleUpdateStatus,
-                  icon: const Icon(
-                    Icons.edit_note_rounded,
+                  onPressed: isCompleted || nextStatus == null
+                      ? null
+                      : () => _handleUpdateStatus(activeReferral),
+                  icon: Icon(
+                    isCompleted ? Icons.check_circle_rounded : Icons.edit_note_rounded,
                     size: 22,
                     color: Colors.white,
                   ),
                   label: Text(
-                    'Update Status',
+                    isCompleted
+                        ? 'Referral Completed'
+                        : _getNextStatusActionLabel(activeReferral.status),
                     style: GoogleFonts.inter(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -127,7 +360,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: isCompleted ? const Color(0xFF10B981) : AppColors.primary,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -301,7 +534,7 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
   }
 
   /// 1. Current Status Card with Red Left Accent Strip
-  Widget _buildCurrentStatusCard(Referral? referral) {
+  Widget _buildCurrentStatusCard(Referral? referral, ReferralGuardianEvaluation evaluation) {
     final urgencyText = referral != null
         ? (referral.urgency == ReferralUrgency.emergency
             ? 'Emergency'
@@ -444,6 +677,53 @@ class _ReferralDetailsScreenState extends State<ReferralDetailsScreen> {
                                 fontWeight: FontWeight.w700,
                                 color: Colors.white,
                                 letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Referral Guardian Operational Status Indicator
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: evaluation.status.backgroundColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: evaluation.status.color.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              evaluation.status.emoji,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Guardian: ${evaluation.status.label}',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: evaluation.status.color,
+                                    ),
+                                  ),
+                                  Text(
+                                    evaluation.operationalSummary,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      color: const Color(0xFF475569),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],

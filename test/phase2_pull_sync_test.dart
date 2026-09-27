@@ -132,6 +132,9 @@ class FakePullConnectivityService implements ConnectivityService {
 /// Fake SMS Service for repository instantiation.
 class FakePullSmsService implements SmsService {
   @override
+  bool get isRealService => false;
+
+  @override
   Future<SmsResult> sendReferralSms({required String recipientPhoneNumber, required Referral referral}) async {
     return SmsResult.success(payload: 'SMS', messageId: '1');
   }

@@ -2,13 +2,16 @@
 import 'package:flutter/material.dart';
 import '../models/referral.dart';
 import '../models/referral_status.dart';
+import '../models/referral_guardian_status.dart';
 import '../repositories/referral_repository.dart';
 import '../services/local_storage/app_database.dart';
 import '../services/sms/sms_service.dart';
+import '../services/guardian/referral_guardian_service.dart';
 
-/// State management for referral lists, detail views, offline creation, and SMS fallback.
+/// State management for referral lists, detail views, offline creation, SMS fallback, and Guardian monitoring.
 class ReferralProvider extends ChangeNotifier {
   final ReferralRepository referralRepository;
+  final ReferralGuardianService _guardianService = const ReferralGuardianService();
 
   List<Referral> _referrals = [];
   bool _isLoading = false;
@@ -189,16 +192,27 @@ class ReferralProvider extends ChangeNotifier {
   }
 
   /// Updates status of an existing referral.
-  Future<void> updateReferralStatus(String id, ReferralStatus newStatus) async {
+  Future<void> updateReferralStatus(
+    String id,
+    ReferralStatus newStatus, {
+    String? facilityId,
+    String? performedBy,
+  }) async {
     if (_isDisposed) return;
     try {
-      await referralRepository.updateStatus(id, newStatus);
+      await referralRepository.updateStatus(
+        id,
+        newStatus,
+        facilityId: facilityId,
+        performedBy: performedBy,
+      );
       await loadReferrals();
     } catch (e) {
       if (!_isDisposed) {
         _errorMessage = 'Failed to update status: $e';
         notifyListeners();
       }
+      rethrow;
     }
   }
 
@@ -206,5 +220,20 @@ class ReferralProvider extends ChangeNotifier {
     if (_isDisposed) return;
     _selectedReferral = referral;
     notifyListeners();
+  }
+
+  /// Evaluates operational Referral Guardian status for a given referral entity.
+  ReferralGuardianEvaluation evaluateGuardianStatus({
+    required Referral referral,
+    SyncQueueData? syncQueueData,
+    List<ReferralEventData>? events,
+    DateTime? currentTime,
+  }) {
+    return _guardianService.evaluateReferral(
+      referral: referral,
+      syncQueueData: syncQueueData,
+      events: events,
+      currentTime: currentTime,
+    );
   }
 }

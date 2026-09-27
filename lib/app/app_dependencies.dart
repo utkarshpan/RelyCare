@@ -80,6 +80,7 @@ class AppDependencies {
       localStorage: storage,
       apiService: api,
       connectivityService: connectivity,
+      smsService: sms,
     );
 
     final referralRepo = referralRepository ??

@@ -119,7 +119,7 @@ void main() {
   setUp(() {
     db = AppDatabase(NativeDatabase.memory());
     localStorage = LocalStorageServiceImpl(db);
-    mockSmsService = MockSmsService();
+    mockSmsService = MockSmsService(isRealService: true);
     fakeApi = _FakeApiStub();
     connectivityService = _FakeTestConnectivityService(initialOnline: false);
     referralRepository = ReferralRepository(

@@ -17,9 +17,9 @@ class ReferralDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // In real flow, obtain referral from ModalRoute arguments if null
-    final currentReferral = referral ??
-        (ModalRoute.of(context)?.settings.arguments as Referral?);
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final navReferral = args is Referral ? args : null;
+    final currentReferral = referral ?? navReferral;
 
     if (currentReferral == null) {
       return Scaffold(

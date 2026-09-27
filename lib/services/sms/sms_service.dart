@@ -70,6 +70,9 @@ class SmsResult {
 
 /// Abstract contract for SMS Fallback transmission.
 abstract class SmsService {
+  /// Whether this service represents an actual real SMS delivery channel (vs. mock/simulation).
+  bool get isRealService;
+
   /// Generates a compact, privacy-safe SMS message payload with minimal necessary data.
   String generateSmsPayload(Referral referral);
 
@@ -88,9 +91,17 @@ abstract class SmsService {
 /// - Patient name is sanitized to First Name + Last Initial (e.g. "Rahul S").
 /// - Uses minimal routing identifiers (Token, Source Facility, Destination Facility, Age).
 class MockSmsService implements SmsService {
+  @override
+  final bool isRealService;
+
   bool shouldFail = false;
   final List<String> sentPayloads = [];
   final List<String> sentRecipients = [];
+
+  MockSmsService({
+    this.isRealService = false,
+    this.shouldFail = false,
+  });
 
   @override
 

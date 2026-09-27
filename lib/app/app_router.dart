@@ -158,7 +158,7 @@ class AppRouter {
           path: referralDetails,
           name: 'referralDetails',
           builder: (BuildContext context, GoRouterState state) {
-            final referral = state.extra as Referral?;
+            final referral = state.extra is Referral ? state.extra as Referral : null;
             return ReferralDetailsScreen(referral: referral);
           },
         ),

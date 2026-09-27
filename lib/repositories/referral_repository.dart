@@ -158,8 +158,50 @@ class ReferralRepository {
   }
 
   /// Updates status (e.g. PATIENT_ARRIVED, UNDER_TREATMENT, COMPLETED).
-  Future<void> updateStatus(String referralId, ReferralStatus status) async {
+  Future<void> updateStatus(
+    String referralId,
+    ReferralStatus status, {
+    String? facilityId,
+    String? performedBy,
+  }) async {
     await localStorage.updateReferralStatus(referralId, status.code);
+    await localStorage.addReferralEvent(
+      referralId: referralId,
+      eventType: status.code,
+      facility: facilityId,
+      performedBy: performedBy,
+      metadata: 'Status updated to ${status.displayName}',
+    );
+
+    Future<void> queueStatusUpdate() async {
+      final pending = await localStorage.getPendingSyncItems();
+      final alreadyQueued = pending.any((item) =>
+          item.entityId == referralId &&
+          item.operation == 'STATUS_UPDATE' &&
+          item.payload == status.code);
+      if (!alreadyQueued) {
+        await localStorage.queueForSync(
+          entityType: 'REFERRAL',
+          entityId: referralId,
+          operation: 'STATUS_UPDATE',
+          payload: status.code,
+        );
+      }
+    }
+
+    if (await connectivityService.checkConnectivity()) {
+      try {
+        await apiService.updateReferralStatus(referralId, status.code);
+      } catch (e) {
+        AppLogger.warning(
+          'API status update for $referralId failed (offline mode): $e',
+          'ReferralRepository',
+        );
+        await queueStatusUpdate();
+      }
+    } else {
+      await queueStatusUpdate();
+    }
   }
 
   /// Pulls the latest referrals from FastAPI backend into local SQLite via shared SyncService.
@@ -228,9 +270,10 @@ class ReferralRepository {
 
     // Record delivery event locally in SQLite
     if (result.isSuccess) {
+      final eventType = smsService.isRealService ? 'SMS_SENT' : 'MOCK_SMS_SENT';
       await localStorage.addReferralEvent(
         referralId: referral.referralToken,
-        eventType: 'SMS_SENT',
+        eventType: eventType,
         facility: referral.sourceFacilityId,
         performedBy: 'SMS Fallback Gateway',
         metadata: 'SMS dispatched to $normalizedPhone (ID: ${result.messageId})',

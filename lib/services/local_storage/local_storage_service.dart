@@ -6,6 +6,7 @@ import '../../core/errors/app_exceptions.dart';
 import '../../models/patient.dart';
 import '../../models/referral.dart';
 import '../../models/referral_status.dart';
+import '../../models/healthcare_facility.dart';
 import '../sms/sms_service.dart';
 
 /// Abstract service contract for local SQLite / Drift storage operations.
@@ -444,6 +445,17 @@ class LocalStorageServiceImpl implements LocalStorageService {
     final patientData = await _db.patientDao.getPatientById(row.patientId);
     final patient = patientData != null ? _mapPatientDataToDomain(patientData) : null;
 
+    final destFacility = row.destinationFacility.trim().isNotEmpty
+        ? HealthcareFacility(
+            id: row.destinationFacility,
+            code: row.destinationFacility,
+            name: row.destinationFacility,
+            type: FacilityType.districtHospital,
+            district: 'District',
+            contactPhone: '+91 9988776655',
+          )
+        : null;
+
     return Referral(
       id: row.id.toString(),
       referralToken: row.referralId,
@@ -451,6 +463,7 @@ class LocalStorageServiceImpl implements LocalStorageService {
       patient: patient,
       sourceFacilityId: row.sourceFacility,
       destinationFacilityId: row.destinationFacility,
+      destinationFacility: destFacility,
       referralReason: row.reason,
       urgency: ReferralUrgencyExtension.fromString(row.urgency),
       clinicalNotesSummary: row.clinicalNotes,

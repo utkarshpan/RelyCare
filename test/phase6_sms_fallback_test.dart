@@ -12,6 +12,7 @@ import 'package:relycare/services/connectivity/connectivity_service.dart';
 import 'package:relycare/services/local_storage/app_database.dart';
 import 'package:relycare/services/local_storage/local_storage_service.dart';
 import 'package:relycare/services/sms/sms_service.dart';
+import 'package:relycare/services/sync/sync_service.dart';
 
 /// Fake API stub for testing isolation.
 class FakeApiStub implements ApiService {
@@ -50,6 +51,26 @@ class FakeApiStub implements ApiService {
   Future<List<IdentityMatch>> requestIdentityMatches(Patient incomingPatient) async => [];
 }
 
+class FakeOnlineConnectivityService implements ConnectivityService {
+  @override
+  Future<ConnectivityStatus> checkConnectivityStatus() async => ConnectivityStatus.online;
+
+  @override
+  Future<bool> checkConnectivity() async => true;
+
+  @override
+  Stream<ConnectivityStatus> get onStatusChanged => const Stream.empty();
+
+  @override
+  Stream<bool> get onConnectivityChanged => const Stream.empty();
+
+  @override
+  ConnectivityStatus get currentStatus => ConnectivityStatus.online;
+
+  @override
+  void dispose() {}
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -64,7 +85,7 @@ void main() {
     setUp(() {
       db = AppDatabase(NativeDatabase.memory());
       localStorage = LocalStorageServiceImpl(db);
-      mockSmsService = MockSmsService();
+      mockSmsService = MockSmsService(isRealService: true);
       referralRepository = ReferralRepository(
         localStorage: localStorage,
         apiService: FakeApiStub(),
@@ -332,7 +353,163 @@ void main() {
       expect(pendingQueue.first.status, equals('PENDING'));
     });
 
-    test('Test I: sendSmsFallback with null or empty recipientPhoneNumber returns failure and does not log events', () async {
+    test('Test I: Normal successful HTTP sync in SyncService does NOT trigger SMS', () async {
+      final referral = await referralProvider.createReferral(
+        patientName: 'Anil Kumar',
+        patientAge: 38,
+        patientGender: 'Male',
+        sourceFacility: 'PHC Kalyanpur',
+        destinationFacility: 'DH Gorakhpur',
+        reason: 'Fracture care',
+      );
+      expect(referral, isNotNull);
+
+      // Instantiating SyncService with MockSmsService and FakeApiStub (successful API)
+      final syncService = SyncService(
+        localStorage: localStorage,
+        apiService: FakeApiStub(),
+        connectivityService: FakeOnlineConnectivityService(),
+        smsService: mockSmsService,
+      );
+
+      final syncedCount = await syncService.syncPendingReferrals();
+      expect(syncedCount, equals(1));
+
+      // Verify SMS was NOT triggered
+      expect(mockSmsService.sentPayloads.isEmpty, isTrue);
+      expect(await referralProvider.getSmsDeliveryStatus(referral!.referralToken),
+          equals(SmsDeliveryStatus.notSent));
+    });
+
+    test('Test J: HTTP sync failure #1 & #2 do NOT trigger SMS; failure #3 (retry threshold) triggers SMS fallback', () async {
+      final referral = await referralProvider.createReferral(
+        patientName: 'Pooja Verma',
+        patientAge: 27,
+        patientGender: 'Female',
+        patientPhone: '+91 9876543210',
+        sourceFacility: 'PHC Kalyanpur',
+        destinationFacility: 'DH Gorakhpur',
+        reason: 'High-risk pregnancy',
+      );
+      expect(referral, isNotNull);
+
+      final failingSyncService = SyncService(
+        localStorage: localStorage,
+        apiService: FailingApiStub(),
+        connectivityService: FakeOnlineConnectivityService(),
+        smsService: mockSmsService,
+        maxRetries: 3,
+      );
+
+      // Failure #1 (retryCount becomes 1) -> No SMS sent yet
+      await failingSyncService.syncPendingReferrals();
+      expect(mockSmsService.sentPayloads.isEmpty, isTrue,
+          reason: 'Failure #1 must not trigger SMS immediately');
+      expect(await referralProvider.getSmsDeliveryStatus(referral!.referralToken),
+          equals(SmsDeliveryStatus.notSent));
+
+      // Failure #2 (retryCount becomes 2) -> No SMS sent yet
+      await failingSyncService.retryFailedItems();
+      expect(mockSmsService.sentPayloads.isEmpty, isTrue,
+          reason: 'Failure #2 must not trigger SMS yet');
+      expect(await referralProvider.getSmsDeliveryStatus(referral.referralToken),
+          equals(SmsDeliveryStatus.notSent));
+
+      // Failure #3 (retryCount becomes 3 >= maxRetries) -> SMS FALLBACK TRIGGERED!
+      await failingSyncService.retryFailedItems();
+      expect(mockSmsService.sentPayloads.length, equals(1),
+          reason: 'Failure #3 reaches maxRetries threshold and triggers SMS fallback');
+      expect(await referralProvider.getSmsDeliveryStatus(referral.referralToken),
+          equals(SmsDeliveryStatus.sent));
+
+      // Verify SMS_SENT event recorded in SQLite
+      final events = await referralProvider.getReferralEvents(referral.id);
+      expect(events.any((e) => e.eventType == 'SMS_SENT'), isTrue);
+
+      // CRITICAL: Verify referral remains pendingSync and SyncQueue is NOT marked SUCCESS
+      final localRef = await referralRepository.getReferralById(referral.id);
+      expect(localRef!.syncState, equals(SyncState.pendingSync));
+
+      final failedItems = await localStorage.getFailedSyncItems();
+      expect(failedItems.length, equals(1));
+      expect(failedItems.first.entityId, equals(referral.referralToken));
+      expect(failedItems.first.status, equals('FAILED'));
+    });
+
+    test('Test K: Subsequent SyncService HTTP failures do NOT re-trigger duplicate SMS', () async {
+      final referral = await referralProvider.createReferral(
+        patientName: 'Ramesh Gupta',
+        patientAge: 49,
+        patientGender: 'Male',
+        sourceFacility: 'PHC Kalyanpur',
+        destinationFacility: 'DH Gorakhpur',
+        reason: 'Chest pain',
+      );
+      expect(referral, isNotNull);
+
+      final failingSyncService = SyncService(
+        localStorage: localStorage,
+        apiService: FailingApiStub(),
+        connectivityService: FakeOnlineConnectivityService(),
+        smsService: mockSmsService,
+        maxRetries: 3,
+      );
+
+      // Run 3 passes to trigger SMS fallback
+      await failingSyncService.syncPendingReferrals(); // Failure 1
+      await failingSyncService.retryFailedItems();      // Failure 2
+      await failingSyncService.retryFailedItems();      // Failure 3 -> SMS sent
+      expect(mockSmsService.sentPayloads.length, equals(1));
+
+      // Subsequent pass -> Duplicate SMS prevented by SMS_SENT check
+      await failingSyncService.retryFailedItems();
+      expect(mockSmsService.sentPayloads.length, equals(1),
+          reason: 'Duplicate SMS must not be sent on subsequent failure passes');
+    });
+
+    test('Test L: HTTP sync can later succeed after SMS fallback, transitioning referral to SYNCED', () async {
+      final referral = await referralProvider.createReferral(
+        patientName: 'Sunil Prasad',
+        patientAge: 52,
+        patientGender: 'Male',
+        sourceFacility: 'PHC Kalyanpur',
+        destinationFacility: 'DH Gorakhpur',
+        reason: 'Abdominal trauma',
+      );
+
+      // Pass 1-3: Offline/HTTP fails 3 times -> SMS fallback triggered
+      final failingSyncService = SyncService(
+        localStorage: localStorage,
+        apiService: FailingApiStub(),
+        connectivityService: FakeOnlineConnectivityService(),
+        smsService: mockSmsService,
+        maxRetries: 3,
+      );
+      await failingSyncService.syncPendingReferrals();
+      await failingSyncService.retryFailedItems();
+      await failingSyncService.retryFailedItems();
+      expect(mockSmsService.sentPayloads.length, equals(1));
+
+      // Internet/API connectivity restored -> HTTP sync succeeds
+      final workingSyncService = SyncService(
+        localStorage: localStorage,
+        apiService: FakeApiStub(),
+        connectivityService: FakeOnlineConnectivityService(),
+        smsService: mockSmsService,
+        maxRetries: 5,
+      );
+      final syncedCount = await workingSyncService.retryFailedItems();
+      expect(syncedCount, equals(1));
+
+      // Verify referral is now HTTP SYNCED and SyncQueue item is SUCCESS
+      final localRef = await referralRepository.getReferralById(referral!.id);
+      expect(localRef!.syncState, equals(SyncState.synced));
+
+      final pendingQueue = await localStorage.getPendingSyncItems();
+      expect(pendingQueue.isEmpty, isTrue);
+    });
+
+    test('Test M: sendSmsFallback with null or empty recipientPhoneNumber returns failure and does not log events', () async {
       final referral = await referralProvider.createReferral(
         patientName: 'Pooja Sharma',
         patientAge: 27,
@@ -369,7 +546,7 @@ void main() {
           equals(SmsDeliveryStatus.notSent));
     });
 
-    test('Test J: createReferral without recipientPhoneNumber creates offline referral without SMS dispatch', () async {
+    test('Test N: createReferral without recipientPhoneNumber creates offline referral without SMS dispatch', () async {
       final referral = await referralProvider.createReferral(
         patientName: 'Deepak Verma',
         patientAge: 46,
@@ -396,5 +573,45 @@ void main() {
       expect(await referralProvider.getSmsDeliveryStatus(referral.referralToken),
           equals(SmsDeliveryStatus.notSent));
     });
+
+    test('Test O: Unconfigured MockSmsService (isRealService == false) records MOCK_SMS_SENT and does NOT produce a false production SMS_SENT event', () async {
+      final mockSender = MockSmsService(isRealService: false);
+      final syncSvc = SyncService(
+        localStorage: localStorage,
+        apiService: FailingApiStub(),
+        connectivityService: ConnectivityServiceImpl(),
+        smsService: mockSender,
+        maxRetries: 1,
+      );
+      final repo = ReferralRepository(
+        localStorage: localStorage,
+        apiService: FailingApiStub(),
+        connectivityService: ConnectivityServiceImpl(),
+        smsService: mockSender,
+        syncService: syncSvc,
+      );
+
+      final referral = await repo.createReferralOffline(
+        patientName: 'Mock Verification',
+        patientAge: 30,
+        patientGender: 'Female',
+        sourceFacility: 'PHC Test',
+        destinationFacility: 'DH Test',
+        reason: 'Test Mock SMS',
+        recipientPhoneNumber: '+91 9988776655',
+        autoSync: true,
+      );
+
+      final events = await repo.getReferralEvents(referral.id);
+      expect(events.any((e) => e.eventType == 'MOCK_SMS_SENT'), isTrue);
+      expect(events.any((e) => e.eventType == 'SMS_SENT'), isFalse);
+    });
   });
+}
+
+class FailingApiStub extends FakeApiStub {
+  @override
+  Future<Referral> createReferral(Referral referral) async {
+    throw Exception('Backend server unreachable / Connection refused');
+  }
 }

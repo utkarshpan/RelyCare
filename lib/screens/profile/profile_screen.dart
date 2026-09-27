@@ -147,9 +147,11 @@ class ProfileScreen extends StatelessWidget {
                 role == UserRole.patient ? 'Log Out' : 'Switch Facility / Log Out',
                 style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
               ),
-              onTap: () {
-                context.read<AuthProvider>().logout();
-                context.go('/login');
+              onTap: () async {
+                await context.read<AuthProvider>().logout();
+                if (context.mounted) {
+                  context.go('/login');
+                }
               },
             ),
           ],
